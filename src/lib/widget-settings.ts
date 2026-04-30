@@ -3,79 +3,155 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**
- * Hook generico per persistere le opzioni di un widget dashboard in
- * localStorage, indicizzate per `widgetId`. Il default fornito viene
- * usato come merge base: chiavi mancanti nello storage prendono il default.
+ * Hook generico per persistere le opzioni di un widget dashboard.
  *
- * Lazy initializer + sync cross-component:
- * - Initial state letto da localStorage al primo render (no useEffect).
- * - Quando `update` modifica una chiave, viene dispatchato un CustomEvent
- *   `fp-widget-update:<id>` che altri hook con stessa id ascoltano per
- *   sincronizzare il proprio state in tempo reale (es. toggle in Milestones
- *   → riflesso immediato in NetWorthChart che legge la stessa chiave).
+ * **Storage: DB (Setting key-value)**, key=`widget.<widgetId>`, value=JSON
+ * dell'oggetto opzioni. Migrazione da localStorage al DB serve a:
+ *   - Condividere preferenze tra dev (browser localhost) e Tauri webview
+ *     (WebKit isolato, ha localStorage separato)
+ *   - Sopravvivere a reinstall .app
+ *   - Finire negli snapshot di debug se utente li manda
+ *
+ * Performance:
+ *   - Module-scoped cache: TUTTE le settings sono fetched una sola volta al
+ *     primo widget mount (multiplexed via promise in-flight). N widget = 1
+ *     fetch totale.
+ *   - Initial state = defaults (sync). Hydration async aggiorna stato dopo
+ *     ~50-100ms al primo render. Per render successivi (cache hit), zero
+ *     latenza.
+ *
+ * Cross-component sync (toggle in widget A → riflesso in widget B che legge
+ * stesso widgetId): mantenuto via CustomEvent come prima.
  *
  * Esempio:
  *   const [opts, setOpts] = useWidgetSettings("recent-tx", { limit: 5 });
  */
 
-const KEY_PREFIX = "fp-widget:";
+const KEY_PREFIX = "widget.";
 const EVENT_PREFIX = "fp-widget-update:";
+
+type SettingsMap = Record<string, string>;
+
+// Cache module-scoped per evitare N fetch quando N widget si montano insieme
+let allSettingsCache: SettingsMap | null = null;
+let allSettingsInflight: Promise<SettingsMap> | null = null;
+
+async function getAllSettings(): Promise<SettingsMap> {
+  if (allSettingsCache) return allSettingsCache;
+  if (allSettingsInflight) return allSettingsInflight;
+  allSettingsInflight = fetch("/api/settings")
+    .then((r) => r.json())
+    .then((d): SettingsMap => {
+      allSettingsCache = d.settings ?? {};
+      return allSettingsCache!;
+    })
+    .catch((): SettingsMap => {
+      allSettingsCache = {};
+      return allSettingsCache;
+    })
+    .finally(() => {
+      allSettingsInflight = null;
+    });
+  return allSettingsInflight;
+}
+
+function persistSetting(key: string, value: string): void {
+  // Update local cache eagerly (next reads vedono il nuovo valore)
+  if (allSettingsCache) allSettingsCache[key] = value;
+  // Fire-and-forget POST. Errori loggati ma non bloccanti — UX optimistic.
+  fetch("/api/settings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, value }),
+  }).catch((e) => {
+    console.warn(`[widget-settings] save failed for ${key}:`, e);
+  });
+}
+
+function deleteSetting(key: string): void {
+  if (allSettingsCache) delete allSettingsCache[key];
+  // /api/settings non ha DELETE → POST con valore vuoto. Backward-compat:
+  // valore "" interpretato come "default" alla prossima lettura.
+  fetch("/api/settings", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ key, value: "" }),
+  }).catch(() => {});
+}
 
 export function useWidgetSettings<T extends Record<string, unknown>>(
   widgetId: string,
   defaults: T,
 ): [T, (patch: Partial<T> | ((prev: T) => Partial<T>)) => void, () => void] {
   // Lock alla reference iniziale di defaults: i widget passano una const
-  // top-level, quindi non cambia mai. Anche se cambiasse, vogliamo
-  // comportamento stabile rispetto alla prima call.
+  // top-level, quindi non cambia mai.
   const defaultsRef = useRef(defaults);
+  const fullKey = KEY_PREFIX + widgetId;
 
+  // Initial state: cache hit immediato, oppure defaults in attesa di hydration
   const [settings, setSettings] = useState<T>(() => {
-    if (typeof window === "undefined") return defaultsRef.current;
-    try {
-      const raw = window.localStorage.getItem(KEY_PREFIX + widgetId);
+    if (allSettingsCache) {
+      const raw = allSettingsCache[fullKey];
       if (raw) {
-        const parsed = JSON.parse(raw);
-        return { ...defaultsRef.current, ...parsed };
+        try {
+          return { ...defaultsRef.current, ...JSON.parse(raw) };
+        } catch {}
       }
-    } catch {}
+    }
     return defaultsRef.current;
   });
+
+  // Hydration: fetch async al mount se cache miss
+  useEffect(() => {
+    let cancelled = false;
+    if (allSettingsCache) {
+      // già hydrated, nothing to do
+      return;
+    }
+    getAllSettings().then((all) => {
+      if (cancelled) return;
+      const raw = all[fullKey];
+      if (raw) {
+        try {
+          const parsed = JSON.parse(raw);
+          setSettings({ ...defaultsRef.current, ...parsed });
+        } catch {}
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [fullKey]);
 
   const update = useCallback(
     (patch: Partial<T> | ((prev: T) => Partial<T>)) => {
       setSettings((prev) => {
         const delta = typeof patch === "function" ? patch(prev) : patch;
         const next = { ...prev, ...delta };
-        try {
-          window.localStorage.setItem(KEY_PREFIX + widgetId, JSON.stringify(next));
-          // Dispatch async per uscire dal render cycle corrente: senza
-          // questo il listener nello stesso componente verrebbe chiamato
-          // mentre l'updater di setSettings sta già aggiornando lo state.
-          queueMicrotask(() =>
-            window.dispatchEvent(
-              new CustomEvent(EVENT_PREFIX + widgetId, { detail: next }),
-            ),
-          );
-        } catch {}
+        persistSetting(fullKey, JSON.stringify(next));
+        // Async dispatch così altri hook con stessa widgetId si sincronizzano
+        queueMicrotask(() =>
+          window.dispatchEvent(
+            new CustomEvent(EVENT_PREFIX + widgetId, { detail: next }),
+          ),
+        );
         return next;
       });
     },
-    [widgetId],
+    [widgetId, fullKey],
   );
 
   const reset = useCallback(() => {
     setSettings(defaultsRef.current);
-    try {
-      window.localStorage.removeItem(KEY_PREFIX + widgetId);
+    deleteSetting(fullKey);
+    queueMicrotask(() =>
       window.dispatchEvent(
         new CustomEvent(EVENT_PREFIX + widgetId, { detail: defaultsRef.current }),
-      );
-    } catch {}
-  }, [widgetId]);
+      ),
+    );
+  }, [widgetId, fullKey]);
 
-  // Ascolta update da altri hook con la stessa widgetId (es. da un altro
-  // widget che muta lo stesso settings store) per sync in tempo reale.
+  // Cross-component sync: ascolta update da altri hook con stessa widgetId
   useEffect(() => {
     function onUpdate(e: Event) {
       const ce = e as CustomEvent<T>;

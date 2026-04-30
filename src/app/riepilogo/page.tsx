@@ -71,17 +71,26 @@ export default async function RiepilogoPage({
     return null;
   }
 
-  // Build matrix: rows = category, cols = months 1..12.
-  // Le tx associate a un estate (via tx.estateId o via category.estateId)
-  // vanno SOLO nella sezione Estates per non doppiare con il gruppo cat.
+  // Build TWO matrici: rows = category, cols = months 1..12.
+  //   - `matrix` (DISPLAY): include TUTTE le tx, anche estate-linked. Così
+  //     una categoria come "🏠 Affitto" linkata a Paris mostra correttamente
+  //     gli incassi nella sezione Entrate.
+  //   - `matrixForNetto` (CALCOLO): esclude tx estate-linked, perché quelle
+  //     sono già contate via `estateMonthly` — evita doppione nel netto.
   const matrix = new Map<string, number[]>();
-  for (const c of categories) matrix.set(c.id, new Array(12).fill(0));
+  const matrixForNetto = new Map<string, number[]>();
+  for (const c of categories) {
+    matrix.set(c.id, new Array(12).fill(0));
+    matrixForNetto.set(c.id, new Array(12).fill(0));
+  }
   for (const t of transactions) {
     if (!t.categoryId) continue;
-    if (effectiveEstateId(t)) continue;
     const arr = matrix.get(t.categoryId);
-    if (!arr) continue;
-    arr[t.month - 1] += t.amount;
+    if (arr) arr[t.month - 1] += t.amount;
+    // Per il netto, escludo le tx estate-linked (già in estateMatrix)
+    if (effectiveEstateId(t)) continue;
+    const arrN = matrixForNetto.get(t.categoryId);
+    if (arrN) arrN[t.month - 1] += t.amount;
   }
 
   // Estate matrix: somma per estate per mese (totali).
@@ -145,7 +154,7 @@ export default async function RiepilogoPage({
   const visibleCatIds = new Set(categories.filter((c) => groups.includes(c.group)).map((c) => c.id));
   const monthlyTotals = new Array(12).fill(0);
   const monthlyInvestito = new Array(12).fill(0);
-  for (const [catId, arr] of matrix) {
+  for (const [catId, arr] of matrixForNetto) {
     if (transferCatIds.has(catId)) continue;
     if (investmentCatIds.has(catId)) {
       arr.forEach((v, i) => {
