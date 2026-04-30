@@ -8,6 +8,7 @@ import { PreferenzeSection } from "@/components/impostazioni/preferenze-section"
 import { SistemaSection } from "@/components/impostazioni/sistema-section";
 import { DatiSection } from "@/components/impostazioni/dati-section";
 import { NotificheSection } from "@/components/impostazioni/notifiche-section";
+import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
 
 export const dynamic = "force-dynamic";
 
@@ -38,6 +39,7 @@ export default async function ImpostazioniPage() {
 
       <Section title="Sistema">
         <SistemaSection version={pkg.version} />
+        <DebugSnapshotSection />
       </Section>
 
       <Section title="Dati">

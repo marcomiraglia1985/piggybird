@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import pkg from "../../package.json";
+import { VersionBadge } from "@/components/version-badge";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/utils";
@@ -164,9 +166,7 @@ export function Sidebar({
             <span className="text-[10px] text-[var(--fg-subtle)] tracking-tight">
               Save smart. Fly higher.
             </span>
-            <span className="text-[10px] font-normal text-[var(--fg-subtle)] tracking-normal mt-1.5">
-              v0.1
-            </span>
+            <VersionBadge currentVersion={pkg.version} />
           </div>
         </Link>
       </div>
