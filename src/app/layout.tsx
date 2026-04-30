@@ -13,6 +13,7 @@ import { estateValueStatus } from "@/lib/estate-value";
 import { hasCompletedOnboarding } from "@/lib/user-profile";
 import { WelcomeOnboarding } from "@/components/welcome-onboarding";
 import { SentryUserContext } from "@/components/sentry-user-context";
+import NextTopLoader from "nextjs-toploader";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -60,6 +61,15 @@ export default async function RootLayout({
             `data-theme="dark"` è già sull'html sopra; un FOUC minimo sul
             theme light dura fino all'hydration. Usare `<script>` o
             `<Script beforeInteractive>` qui darebbe warning React 19. */}
+        {/* Top progress bar: feedback immediato al click su Link, indipendente
+            da loading.tsx. Risolve la sensazione di "app freezata" in dev mode
+            quando Next.js compila on-demand. */}
+        <NextTopLoader
+          color="#8b5cf6"
+          height={3}
+          showSpinner={false}
+          shadow="0 0 10px #8b5cf6,0 0 5px #8b5cf6"
+        />
         <PreferencesBootstrap>
           <ToastProvider>
             <ConfirmProvider>
