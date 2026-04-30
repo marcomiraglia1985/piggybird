@@ -71,24 +71,39 @@ export default async function RiepilogoPage({
     return null;
   }
 
-  // Build TWO matrici: rows = category, cols = months 1..12.
-  //   - `matrix` (DISPLAY): include TUTTE le tx, anche estate-linked. Così
-  //     una categoria come "🏠 Affitto" linkata a Paris mostra correttamente
-  //     gli incassi nella sezione Entrate.
-  //   - `matrixForNetto` (CALCOLO): esclude tx estate-linked, perché quelle
-  //     sono già contate via `estateMonthly` — evita doppione nel netto.
+  // Helper: una tx è "realizzata" (impatta il saldo reale) se è confermata
+  // E la sua data è già passata. Le altre (future date o unconfirmed) sono
+  // "previste" — mostrate ma escluse dal netto reale.
+  const nowMs = now.getTime();
+  const isRealized = (t: { confirmed: boolean; date: Date }) =>
+    t.confirmed && t.date.getTime() <= nowMs;
+
+  // Build TRE matrici: rows = category, cols = months 1..12.
+  //   - `matrix` (DISPLAY total): include TUTTE le tx (realizzate + previste).
+  //   - `matrixFuture` (DISPLAY future-only per cell): solo previste, usata dal
+  //     client per applicare opacity/italic alla cella se è solo previsioni.
+  //   - `matrixForNetto` (CALCOLO netto reale): solo realizzate, escluse anche
+  //     le estate-linked (già contate via estateMonthly) per non doppiare.
   const matrix = new Map<string, number[]>();
+  const matrixFuture = new Map<string, number[]>();
   const matrixForNetto = new Map<string, number[]>();
   for (const c of categories) {
     matrix.set(c.id, new Array(12).fill(0));
+    matrixFuture.set(c.id, new Array(12).fill(0));
     matrixForNetto.set(c.id, new Array(12).fill(0));
   }
   for (const t of transactions) {
     if (!t.categoryId) continue;
     const arr = matrix.get(t.categoryId);
     if (arr) arr[t.month - 1] += t.amount;
-    // Per il netto, escludo le tx estate-linked (già in estateMatrix)
+    if (!isRealized(t)) {
+      const arrF = matrixFuture.get(t.categoryId);
+      if (arrF) arrF[t.month - 1] += t.amount;
+    }
+    // Per il netto, escludo le tx estate-linked (già in estateMatrix) e le
+    // tx future/unconfirmed (non ancora avvenute).
     if (effectiveEstateId(t)) continue;
+    if (!isRealized(t)) continue;
     const arrN = matrixForNetto.get(t.categoryId);
     if (arrN) arrN[t.month - 1] += t.amount;
   }
@@ -97,15 +112,30 @@ export default async function RiepilogoPage({
   // Tutte le tx legate all'estate (incluse capex come Acquisto) finiscono
   // nel cashflow del /riepilogo perché impattano davvero il bank balance.
   // L'esclusione capex avviene solo nella estate detail page.
+  // Anche qui: distinguiamo `estateMatrix` (display, tutte) da
+  // `estateMatrixFuture` (per opacity), e `estateMonthlyRealized` (solo per netto).
   const estateMatrix = new Map<string, number[]>();
-  for (const e of estates) estateMatrix.set(e.id, new Array(12).fill(0));
+  const estateMatrixFuture = new Map<string, number[]>();
+  for (const e of estates) {
+    estateMatrix.set(e.id, new Array(12).fill(0));
+    estateMatrixFuture.set(e.id, new Array(12).fill(0));
+  }
   const estateMonthly = new Array(12).fill(0);
+  const estateMonthlyFuture = new Array(12).fill(0);
+  const estateMonthlyRealized = new Array(12).fill(0);
   for (const t of transactions) {
     const eid = effectiveEstateId(t);
     if (!eid) continue;
     const arr = estateMatrix.get(eid);
     if (arr) arr[t.month - 1] += t.amount;
     estateMonthly[t.month - 1] += t.amount;
+    if (isRealized(t)) {
+      estateMonthlyRealized[t.month - 1] += t.amount;
+    } else {
+      const arrF = estateMatrixFuture.get(eid);
+      if (arrF) arrF[t.month - 1] += t.amount;
+      estateMonthlyFuture[t.month - 1] += t.amount;
+    }
   }
   const estateGrand = estateMonthly.reduce((a, b) => a + b, 0);
 
@@ -167,9 +197,22 @@ export default async function RiepilogoPage({
       monthlyTotals[i] += v;
     });
   }
-  // Aggiungi il cashflow degli estates al netto
-  for (let i = 0; i < 12; i++) monthlyTotals[i] += estateMonthly[i];
+  // Aggiungi il cashflow REALIZZATO degli estates al netto (esclude future)
+  for (let i = 0; i < 12; i++) monthlyTotals[i] += estateMonthlyRealized[i];
   const grandTotal = monthlyTotals.reduce((a, b) => a + b, 0);
+
+  // Proiezione: somma future tx (incluse estate-linked) per cell. Mostrata
+  // come riga sotto al netto + greyed nelle celle.
+  const monthlyTotalsFuture = new Array(12).fill(0);
+  for (const [catId, arr] of matrixFuture) {
+    if (transferCatIds.has(catId)) continue;
+    if (investmentCatIds.has(catId)) continue;
+    if (!visibleCatIds.has(catId)) continue;
+    arr.forEach((v, i) => {
+      monthlyTotalsFuture[i] += v;
+    });
+  }
+  for (let i = 0; i < 12; i++) monthlyTotalsFuture[i] += estateMonthlyFuture[i];
   const grandInvestito = monthlyInvestito.reduce((a, b) => a + b, 0);
 
   // === Costruisci i GroupRow per il client component ===
@@ -177,20 +220,23 @@ export default async function RiepilogoPage({
   const investmentRows = investmentCats
     .map((c) => {
       const arr = matrix.get(c.id) ?? new Array(12).fill(0);
+      const arrF = matrixFuture.get(c.id) ?? new Array(12).fill(0);
       const total = arr.reduce((a, b) => a + b, 0);
-      return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, total };
+      return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, monthlyFuture: arrF, total };
     })
     .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
 
   const estateRows = estates
     .map((e) => {
       const arr = estateMatrix.get(e.id) ?? new Array(12).fill(0);
+      const arrF = estateMatrixFuture.get(e.id) ?? new Array(12).fill(0);
       const total = arr.reduce((a, b) => a + b, 0);
       return {
         id: e.id,
         emoji: e.emoji ?? "🏠",
         label: e.name,
         monthly: arr,
+        monthlyFuture: arrF,
         total,
         href: `/estates/${e.id}`,
       };
@@ -211,7 +257,11 @@ export default async function RiepilogoPage({
       .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
     if (rows.length > 0 || showAll) {
       const groupMonthly = new Array(12).fill(0);
-      for (const r of rows) r.monthly.forEach((v, i) => (groupMonthly[i] += v));
+      const groupMonthlyFuture = new Array(12).fill(0);
+      for (const r of rows) {
+        r.monthly.forEach((v, i) => (groupMonthly[i] += v));
+        r.monthlyFuture.forEach((v, i) => (groupMonthlyFuture[i] += v));
+      }
       matrixGroups.push({
         id: "transfer",
         label: groupLabels.transfer,
@@ -219,6 +269,7 @@ export default async function RiepilogoPage({
         collapsible: true,
         defaultExpanded: false,
         headerMonthly: groupMonthly,
+        headerMonthlyFuture: groupMonthlyFuture,
         headerTotal: groupMonthly.reduce((a, b) => a + b, 0),
         rows,
         separateAfter: true,
@@ -238,7 +289,11 @@ export default async function RiepilogoPage({
       .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
     if (rows.length === 0 && !showAll) return null;
     const groupMonthly = new Array(12).fill(0);
-    for (const r of rows) r.monthly.forEach((v, i) => (groupMonthly[i] += v));
+    const groupMonthlyFuture = new Array(12).fill(0);
+    for (const r of rows) {
+      r.monthly.forEach((v, i) => (groupMonthly[i] += v));
+      r.monthlyFuture.forEach((v, i) => (groupMonthlyFuture[i] += v));
+    }
     return {
       id: g,
       label: groupLabels[g] ?? g,
@@ -246,6 +301,7 @@ export default async function RiepilogoPage({
       collapsible: false,
       defaultExpanded: true,
       headerMonthly: groupMonthly,
+      headerMonthlyFuture: groupMonthlyFuture,
       headerTotal: groupMonthly.reduce((a, b) => a + b, 0),
       rows,
     } satisfies GroupRow;
@@ -266,12 +322,19 @@ export default async function RiepilogoPage({
       collapsible: true,
       defaultExpanded: false,
       headerMonthly: estateMonthly,
+      headerMonthlyFuture: estateMonthlyFuture,
       headerTotal: estateGrand,
       rows: estateRows,
     });
   }
 
   if (groups.includes("investments") && (investmentRows.length > 0 || showAll)) {
+    // Future per investments: somma future tx delle cat type=investment
+    const investmentMonthlyFuture = new Array(12).fill(0);
+    for (const c of investmentCats) {
+      const arrF = matrixFuture.get(c.id) ?? new Array(12).fill(0);
+      arrF.forEach((v, i) => (investmentMonthlyFuture[i] += v));
+    }
     matrixGroups.push({
       id: "investments",
       label: "Investimenti",
@@ -279,6 +342,7 @@ export default async function RiepilogoPage({
       collapsible: true,
       defaultExpanded: false,
       headerMonthly: monthlyInvestito,
+      headerMonthlyFuture: investmentMonthlyFuture,
       headerTotal: grandInvestito,
       rows: investmentRows,
     });
@@ -491,6 +555,7 @@ export default async function RiepilogoPage({
       <MatrixTable
         groups={matrixGroups}
         monthlyTotals={monthlyTotals}
+        monthlyTotalsFuture={monthlyTotalsFuture}
         grandTotal={grandTotal}
       />
     </div>

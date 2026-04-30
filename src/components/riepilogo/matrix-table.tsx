@@ -12,6 +12,11 @@ export type SubRow = {
   emoji: string;
   label: string;
   monthly: number[];
+  /** Per cella: somma future tx (date>oggi o confirmed=false). Se uguale a
+   *  `monthly[i]` (cella interamente futura) la cella è greyed/italic. Se
+   *  in mezzo (mixed past+future) il display resta normale ma il sub-text
+   *  segnala il delta atteso. */
+  monthlyFuture?: number[];
   total: number;
   href?: string;
 };
@@ -24,11 +29,20 @@ export type GroupRow = {
   defaultExpanded: boolean;
   /** Monthly totals + grand total mostrati sulla header row (aggregato) */
   headerMonthly: number[];
+  headerMonthlyFuture?: number[];
   headerTotal: number;
   rows: SubRow[];
   /** Border separatrice forte sotto al gruppo (es. transfer in cima) */
   separateAfter?: boolean;
 };
+
+/** Helper: una cella è "interamente futura" se future === monthly e monthly !== 0.
+ *  Renderizza italic + opacity-50. */
+function isAllFuture(monthly: number, future: number | undefined): boolean {
+  if (!future || monthly === 0) return false;
+  // Tolerance per floating point
+  return Math.abs(monthly - future) < 0.01;
+}
 
 const TONE_TEXT: Record<GroupRow["tone"], string> = {
   transfer: "text-[var(--fg-muted)]",
@@ -62,10 +76,14 @@ function rowAmountColor(v: number, tone: GroupRow["tone"]): string {
 export function MatrixTable({
   groups,
   monthlyTotals,
+  monthlyTotalsFuture,
   grandTotal,
 }: {
   groups: GroupRow[];
   monthlyTotals: number[];
+  /** Future cashflow per cella (proiezione mese): mostrata in chiaro/italic
+   *  sotto al netto realizzato. Cella senza realizzato → solo previsione greyed. */
+  monthlyTotalsFuture?: number[];
   grandTotal: number;
 }) {
   // Stato per ogni gruppo collapsible
@@ -127,18 +145,43 @@ export function MatrixTable({
             <td className="px-3 py-3 font-medium sticky left-0 bg-[var(--surface-2)]/95 z-10">
               Netto
             </td>
-            {monthlyTotals.map((v, i) => (
-              <td
-                key={i}
-                className={cn(
-                  "px-2 py-3 text-right tabular-nums text-xs font-medium",
-                  v > 0 && "text-emerald-400",
-                  v < 0 && "text-rose-400",
-                )}
-              >
-                {v === 0 ? "—" : formatEUR(v, { compact: true })}
-              </td>
-            ))}
+            {monthlyTotals.map((v, i) => {
+              const future = monthlyTotalsFuture?.[i] ?? 0;
+              // Caso A: nessun realizzato e c'è proiezione futura → mostra
+              // la proiezione greyed/italic
+              if (v === 0 && future !== 0) {
+                return (
+                  <td
+                    key={i}
+                    className={cn(
+                      "px-2 py-3 text-right tabular-nums text-xs font-medium italic opacity-50",
+                      future > 0 ? "text-emerald-400" : "text-rose-400",
+                    )}
+                    title={`Previsione: ${formatEUR(future)} (non ancora realizzato)`}
+                  >
+                    {formatEUR(future, { compact: true })}
+                  </td>
+                );
+              }
+              // Caso B: c'è realizzato (con o senza future aggiuntivo)
+              return (
+                <td
+                  key={i}
+                  className={cn(
+                    "px-2 py-3 text-right tabular-nums text-xs font-medium",
+                    v > 0 && "text-emerald-400",
+                    v < 0 && "text-rose-400",
+                  )}
+                  title={
+                    future !== 0
+                      ? `Realizzato: ${formatEUR(v)} · Previsto in più: ${formatEUR(future)}`
+                      : undefined
+                  }
+                >
+                  {v === 0 ? "—" : formatEUR(v, { compact: true })}
+                </td>
+              );
+            })}
             <td
               className={cn(
                 "px-3 py-3 text-right tabular-nums font-semibold",
@@ -198,17 +241,29 @@ function GroupRows({
             {group.label}
           </span>
         </td>
-        {group.headerMonthly.map((v, i) => (
-          <td
-            key={i}
-            className={cn(
-              "px-2 py-2 text-right tabular-nums text-xs font-medium",
-              rowAmountColor(v, group.tone),
-            )}
-          >
-            {v === 0 ? "—" : formatEUR(v, { compact: true })}
-          </td>
-        ))}
+        {group.headerMonthly.map((v, i) => {
+          const future = group.headerMonthlyFuture?.[i] ?? 0;
+          const allFuture = isAllFuture(v, future);
+          return (
+            <td
+              key={i}
+              className={cn(
+                "px-2 py-2 text-right tabular-nums text-xs font-medium",
+                rowAmountColor(v, group.tone),
+                allFuture && "italic opacity-50",
+              )}
+              title={
+                allFuture
+                  ? `Previsione: ${formatEUR(v)} (non ancora realizzato)`
+                  : future !== 0
+                    ? `Realizzato: ${formatEUR(v - future)} · Previsto in più: ${formatEUR(future)}`
+                    : undefined
+              }
+            >
+              {v === 0 ? "—" : formatEUR(v, { compact: true })}
+            </td>
+          );
+        })}
         <td
           className={cn(
             "px-3 py-2 text-right tabular-nums text-xs font-semibold",
@@ -249,17 +304,29 @@ function GroupRows({
                   labelCell
                 )}
               </td>
-              {r.monthly.map((v, i) => (
-                <td
-                  key={i}
-                  className={cn(
-                    "px-2 py-2 text-right tabular-nums text-xs",
-                    rowAmountColor(v, group.tone),
-                  )}
-                >
-                  {v === 0 ? "—" : formatEUR(v, { compact: true })}
-                </td>
-              ))}
+              {r.monthly.map((v, i) => {
+                const future = r.monthlyFuture?.[i] ?? 0;
+                const allFuture = isAllFuture(v, future);
+                return (
+                  <td
+                    key={i}
+                    className={cn(
+                      "px-2 py-2 text-right tabular-nums text-xs",
+                      rowAmountColor(v, group.tone),
+                      allFuture && "italic opacity-50",
+                    )}
+                    title={
+                      allFuture
+                        ? `Previsione: ${formatEUR(v)} (non ancora realizzato)`
+                        : future !== 0
+                          ? `Realizzato: ${formatEUR(v - future)} · Previsto in più: ${formatEUR(future)}`
+                          : undefined
+                    }
+                  >
+                    {v === 0 ? "—" : formatEUR(v, { compact: true })}
+                  </td>
+                );
+              })}
               <td
                 className={cn(
                   "px-3 py-2 text-right tabular-nums text-xs font-medium",
