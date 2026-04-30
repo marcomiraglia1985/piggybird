@@ -308,6 +308,33 @@ model Setting {
   value String
 }
 
+/** Cache di parser CSV/XLSX riconosciuti via AI fallback.
+ *  Quando un utente importa un file di banca non supportata dai parser
+ *  deterministici, la app invia le prime righe a Claude (con la dev API
+ *  key, in beta) per inferire un mapping {date col, amount col, ...}.
+ *  Il mapping viene salvato qui, indicizzato per `signature` (hash dei
+ *  primi N header) — al prossimo upload con stessa signature, hit cache:
+ *  niente nuova chiamata AI. */
+model ParserTemplate {
+  /** sha256 dei primi N header (lowercase, sorted) */
+  signature   String   @id
+  /** Nome banca inferito dall'AI (es. "N26", "Deutsche Bank") — solo display */
+  bankName    String?
+  /** Mapping JSON: { dateCol: 0, amountCol: 3, descCol: 5, skipRows: 0,
+   *  amountSign: "signed" | "split", entrateCol?: ..., usciteCol?: ...,
+   *  dateFormat: "dd/mm/yyyy" | "iso" | "excel-serial" | ...,
+   *  decimalSep: "," | ".", currency: "EUR", ...} */
+  mapping     String
+  /** Headers originali (per debug e display) */
+  sampleHeaders String?
+  /** Telemetria: quante volte questo template è stato applicato */
+  usageCount  Int      @default(0)
+  /** Costo in EUR della chiamata AI iniziale */
+  aiCostEur   Float?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /** Filtri salvati per /movimenti (combo year+account+cat+q etc). */
 model SavedFilter {
   id           String   @id @default(cuid())

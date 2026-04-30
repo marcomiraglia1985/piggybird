@@ -4,6 +4,13 @@ import { parseFineco, isFineco } from "./fineco";
 import { parseBNP, isBNP } from "./bnp";
 import type { ParserResult } from "./types";
 import Papa from "papaparse";
+import { parseUniversalWithFallback } from "@/lib/universal-parser";
+
+// Re-export per backward compat con import esistenti che usavano
+// `from "@/lib/csv-parsers/dispatcher"`. Il file `banks.ts` è client-safe;
+// importarlo da qui (server) è OK ma il client deve importare direttamente
+// `@/lib/csv-parsers/banks` per evitare di tirare dentro Prisma/Anthropic.
+export { SUPPORTED_BANKS, type SupportedBank, type DetectedFormat } from "./banks";
 
 /**
  * Converte un xlsx in CSV (primo foglio) per riusare i parser CSV esistenti.
@@ -25,33 +32,6 @@ export function inspectHeaders(content: string, max = 12): string[] {
   });
   return (parsed.data[0] ?? []).slice(0, max).map((h) => String(h));
 }
-
-export type DetectedFormat =
-  | "revolut"
-  | "fineco"
-  | "bnp"
-  | "unknown";
-
-/**
- * Registry user-facing dei parser bancari supportati.
- * Visualizzato nella pagina /import come chip "banche supportate".
- *
- * Per aggiungere una nuova banca:
- *   1. Crea `./<bank>.ts` con detector (`isXxx`) e parser (`parseXxx`)
- *   2. Aggiungi al `parseAny` qui sotto
- *   3. Aggiungi metadata qui in SUPPORTED_BANKS — appare automaticamente in UI
- */
-export type SupportedBank = {
-  format: DetectedFormat;
-  name: string;
-  flag: string;
-};
-
-export const SUPPORTED_BANKS: SupportedBank[] = [
-  { format: "revolut", name: "Revolut", flag: "💳" },
-  { format: "fineco", name: "Fineco", flag: "🇮🇹" },
-  { format: "bnp", name: "BNP Paribas", flag: "🇫🇷" },
-];
 
 /**
  * Sceglie il parser giusto in base agli header del CSV.
@@ -86,4 +66,32 @@ export function parseAny(content: string): ParserResult {
       `Formato non riconosciuto. Header trovati: ${headers.slice(0, 8).join(", ") || "(nessuno)"}`,
     ],
   };
+}
+
+/**
+ * Variante di parseAny con fallback AI universale: se nessun parser
+ * deterministico riconosce il file, prova a inferire il mapping via Claude
+ * (con dev key in beta) e applicarlo. Cache su `ParserTemplate` evita
+ * chiamate ripetute per lo stesso formato.
+ *
+ * Usata da `/api/import/parse` come entry point principale.
+ */
+export async function parseAnyWithFallback(content: string): Promise<ParserResult> {
+  const result = parseAny(content);
+  if (result.format !== "unknown") return result;
+  // Fallback AI — costa ~3 cents per nuovo formato (one-time, poi cache)
+  try {
+    return await parseUniversalWithFallback(content);
+  } catch (e) {
+    // Se fallback fallisce (no API key, AI error, ecc.), torniamo result
+    // originale "unknown" con messaggio chiaro
+    return {
+      format: "unknown",
+      rows: [],
+      warnings: [
+        ...result.warnings,
+        `Fallback AI fallito: ${e instanceof Error ? e.message : String(e)}`,
+      ],
+    };
+  }
 }

@@ -1,0 +1,47 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "productName": "Piggybird",
+  "version": "0.1.0",
+  "identifier": "app.piggybird",
+  "build": {
+    "frontendDist": "../out",
+    "devUrl": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Piggybird",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 900,
+        "minHeight": 600,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false
+      }
+    ],
+    "security": {
+      "csp": null
+    },
+    "macOSPrivateApi": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["dmg", "app"],
+    "category": "Finance",
+    "shortDescription": "Piggybird — gestione finanze personali",
+    "longDescription": "Piggybird è la tua app desktop per gestire conti, movimenti, investimenti, immobili e spese condivise. Tutti i tuoi dati restano sul tuo Mac.",
+    "copyright": "Copyright © 2026 Marco Miraglia. All rights reserved.",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "macOS": {
+      "minimumSystemVersion": "11.0"
+    }
+  }
+}

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { parseAny, xlsxToCsv } from "@/lib/csv-parsers/dispatcher";
+import { parseAnyWithFallback, xlsxToCsv } from "@/lib/csv-parsers/dispatcher";
 import { suggestCategoriesBatch } from "@/lib/categorize";
 import { fingerprintBeneficiary } from "@/lib/beneficiary-fingerprint";
 import { prisma } from "@/lib/prisma";
@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     content = await (file as File).text();
   }
 
-  const result = parseAny(content);
+  const result = await parseAnyWithFallback(content);
   if (result.format === "unknown") {
     return NextResponse.json(
       { error: "Formato non riconosciuto", warnings: result.warnings },

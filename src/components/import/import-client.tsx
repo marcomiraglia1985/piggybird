@@ -14,7 +14,7 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 import { formatEUR, formatDate, cn } from "@/lib/utils";
-import { SUPPORTED_BANKS } from "@/lib/csv-parsers/dispatcher";
+import { SUPPORTED_BANKS } from "@/lib/csv-parsers/banks";
 import { CategoryPicker } from "@/components/movimenti/category-picker";
 
 type SoftDupInfo = {
