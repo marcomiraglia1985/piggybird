@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { estateValueStatus } from "@/lib/estate-value";
 import { hasCompletedOnboarding } from "@/lib/user-profile";
 import { WelcomeOnboarding } from "@/components/welcome-onboarding";
+import { SentryUserContext } from "@/components/sentry-user-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -70,6 +71,7 @@ export default async function RootLayout({
                 </div>
               </div>
               <CommandPalette />
+              <SentryUserContext />
               {!onboarded && <WelcomeOnboarding />}
             </ConfirmProvider>
           </ToastProvider>

@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs";
 
 const nextConfig: NextConfig = {
   // Disabilita il "dev indicator" (badge "N" in basso a sx con route/bundler).
@@ -12,4 +13,14 @@ const nextConfig: NextConfig = {
   reactStrictMode: false,
 };
 
-export default nextConfig;
+// Sentry wrap: minima config per beta. Niente upload source maps (richiede
+// SENTRY_AUTH_TOKEN che possiamo aggiungere quando faremo build production).
+export default withSentryConfig(nextConfig, {
+  silent: true, // niente log Sentry durante build
+  // Source maps upload richiede auth token + org/project — skip per dev
+  // beta. Quando faremo release production aggiungeremo i flag.
+  tunnelRoute: "/monitoring", // proxy Sentry events via la nostra origin per
+  // bypassare ad-blocker che bloccano *.sentry.io
+  hideSourceMaps: true,
+  disableLogger: true,
+});
