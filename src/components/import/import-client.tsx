@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   UploadCloud,
@@ -106,6 +106,16 @@ export function ImportClient() {
   const [committed, setCommitted] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [hideDuplicates, setHideDuplicates] = useState(false);
+  // Banche aggiunte dinamicamente via universal AI fallback (es. N26).
+  // Mostrate accanto a SUPPORTED_BANKS hardcoded col badge ✨.
+  const [aiBanks, setAiBanks] = useState<{ name: string; usageCount: number }[]>([]);
+
+  useEffect(() => {
+    fetch("/api/parser-templates")
+      .then((r) => r.json())
+      .then((d) => setAiBanks(Array.isArray(d.banks) ? d.banks : []))
+      .catch(() => {});
+  }, []);
 
   const onFile = useCallback(async (file: File) => {
     setStage("parsing");
@@ -411,14 +421,21 @@ export function ImportClient() {
                 <span className="font-medium">{b.name}</span>
               </span>
             ))}
-            <span className="inline-flex items-center px-2.5 py-1 text-[11px] text-[var(--fg-subtle)]">
-              + altre in arrivo
-            </span>
+            {aiBanks.map((b) => (
+              <span
+                key={`ai-${b.name}`}
+                title={`Aggiunta via AI · usata ${b.usageCount}x`}
+                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-xs"
+              >
+                <span>✨</span>
+                <span className="font-medium">{b.name}</span>
+              </span>
+            ))}
           </div>
           <p className="text-[11px] text-[var(--fg-subtle)] text-center pt-1">
-            Riconoscimento automatico dell&apos;header — nessuna selezione
-            manuale del formato. Dopo il caricamento ti chiediamo solo a quale
-            conto associare i movimenti.
+            Riconoscimento automatico dell&apos;header — nessuna selezione manuale
+            del formato. Banche nuove vengono riconosciute via ✨ AI e poi
+            ricordate per i prossimi import.
           </p>
         </div>
       </div>
