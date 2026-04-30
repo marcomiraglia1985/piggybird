@@ -424,18 +424,17 @@ export function ImportClient() {
             {aiBanks.map((b) => (
               <span
                 key={`ai-${b.name}`}
-                title={`Aggiunta via AI · usata ${b.usageCount}x`}
-                className="inline-flex items-center gap-1.5 rounded-md border border-violet-500/40 bg-violet-500/10 px-2.5 py-1 text-xs"
+                className="inline-flex items-center gap-1.5 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-xs"
               >
-                <span>✨</span>
+                <span>🏦</span>
                 <span className="font-medium">{b.name}</span>
               </span>
             ))}
           </div>
           <p className="text-[11px] text-[var(--fg-subtle)] text-center pt-1">
             Riconoscimento automatico dell&apos;header — nessuna selezione manuale
-            del formato. Banche nuove vengono riconosciute via ✨ AI e poi
-            ricordate per i prossimi import.
+            del formato. Banche nuove vengono riconosciute al primo import e poi
+            ricordate.
           </p>
         </div>
       </div>
