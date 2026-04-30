@@ -1,0 +1,183 @@
+import Anthropic from "@anthropic-ai/sdk";
+import { prisma } from "./prisma";
+import { decrypt, encrypt } from "./crypto";
+import {
+  AI_MODELS,
+  computeCallCostEur,
+  type AIModelId,
+} from "./ai-pricing";
+
+const PROVIDER_KEY = "anthropic";
+
+/**
+ * Wrapper sopra Anthropic SDK per le feature AI on-demand della app.
+ *
+ * Filosofia:
+ *   - BYOK (Bring Your Own Key): l'utente inserisce la propria API key in
+ *     /impostazioni → AI Features. Salvata cifrata in ApiCredential
+ *     (provider="anthropic") tramite lib/crypto.ts (AES-256-GCM).
+ *   - On-demand: ogni chiamata è scatenata da un'esplicita azione utente.
+ *     Niente background, niente token bruciati senza consent.
+ *   - Tracked: ogni call salva una row in AIUsage con tokens + cost EUR.
+ */
+
+export type ClaudeMessage = {
+  role: "user" | "assistant";
+  content: string;
+};
+
+export type ClaudeCallOptions = {
+  feature: string; // identificativo della feature, salvato in AIUsage
+  model?: AIModelId;
+  system?: string;
+  messages: ClaudeMessage[];
+  maxTokens?: number;
+  /** Se true, NON registra in AIUsage (es. per test credential). */
+  skipUsageTracking?: boolean;
+};
+
+export type ClaudeCallResult = {
+  text: string;
+  inputTokens: number;
+  outputTokens: number;
+  costEur: number;
+  model: AIModelId;
+};
+
+async function getApiKey(): Promise<string | null> {
+  const cred = await prisma.apiCredential.findUnique({
+    where: { provider: PROVIDER_KEY },
+  });
+  if (!cred) return null;
+  try {
+    return decrypt({
+      ciphertext: cred.apiKey,
+      iv: cred.iv,
+      authTag: cred.authTag,
+    });
+  } catch {
+    return null;
+  }
+}
+
+export async function hasAnthropicCredential(): Promise<boolean> {
+  const cred = await prisma.apiCredential.findUnique({
+    where: { provider: PROVIDER_KEY },
+    select: { provider: true },
+  });
+  return cred != null;
+}
+
+/** Salva (o aggiorna) la API key Anthropic, cifrata. */
+export async function saveAnthropicCredential(apiKey: string): Promise<void> {
+  const enc = encrypt(apiKey);
+  const hint = apiKey.length > 8 ? `…${apiKey.slice(-4)}` : "set";
+  await prisma.apiCredential.upsert({
+    where: { provider: PROVIDER_KEY },
+    create: {
+      provider: PROVIDER_KEY,
+      apiKey: enc.ciphertext,
+      iv: enc.iv,
+      authTag: enc.authTag,
+      hint,
+    },
+    update: {
+      apiKey: enc.ciphertext,
+      iv: enc.iv,
+      authTag: enc.authTag,
+      hint,
+    },
+  });
+}
+
+export async function deleteAnthropicCredential(): Promise<void> {
+  await prisma.apiCredential
+    .delete({ where: { provider: PROVIDER_KEY } })
+    .catch(() => null);
+}
+
+/** Test rapido: chiama l'API con un prompt minimale per validare la key. */
+export async function testAnthropicCredential(apiKey: string): Promise<{
+  ok: boolean;
+  error?: string;
+}> {
+  try {
+    const client = new Anthropic({ apiKey });
+    await client.messages.create({
+      model: AI_MODELS.haiku,
+      max_tokens: 5,
+      messages: [{ role: "user", content: "ping" }],
+    });
+    return { ok: true };
+  } catch (e) {
+    const err = e as { status?: number; message?: string };
+    return {
+      ok: false,
+      error:
+        err.status === 401
+          ? "API key non valida (401 unauthorized)"
+          : err.message ?? String(e),
+    };
+  }
+}
+
+/**
+ * Chiamata principale: Claude messages API + tracking automatico in AIUsage.
+ * Lancia errore se: (a) credential mancante, (b) API error.
+ */
+export async function callClaude(
+  opts: ClaudeCallOptions,
+): Promise<ClaudeCallResult> {
+  const apiKey = await getApiKey();
+  if (!apiKey) {
+    throw new Error("Nessuna API key Anthropic configurata.");
+  }
+  const model: AIModelId = opts.model ?? "sonnet";
+  const client = new Anthropic({ apiKey });
+
+  let result: ClaudeCallResult | null = null;
+  let errorMsg: string | null = null;
+  let status: "ok" | "error" | "rate_limited" = "ok";
+
+  try {
+    const resp = await client.messages.create({
+      model: AI_MODELS[model],
+      max_tokens: opts.maxTokens ?? 1024,
+      system: opts.system,
+      messages: opts.messages,
+    });
+    const text = resp.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as { text: string }).text)
+      .join("");
+    const inputTokens = resp.usage?.input_tokens ?? 0;
+    const outputTokens = resp.usage?.output_tokens ?? 0;
+    const costEur = computeCallCostEur(model, inputTokens, outputTokens);
+    result = { text, inputTokens, outputTokens, costEur, model };
+  } catch (e) {
+    const err = e as { status?: number; message?: string };
+    errorMsg = err.message ?? String(e);
+    status = err.status === 429 ? "rate_limited" : "error";
+  }
+
+  if (!opts.skipUsageTracking) {
+    await prisma.aIUsage
+      .create({
+        data: {
+          feature: opts.feature,
+          model: AI_MODELS[model],
+          inputTokens: result?.inputTokens ?? 0,
+          outputTokens: result?.outputTokens ?? 0,
+          costEur: result?.costEur ?? 0,
+          status,
+          errorMsg,
+        },
+      })
+      .catch(() => null);
+  }
+
+  if (!result) {
+    throw new Error(errorMsg ?? "Claude API error");
+  }
+  return result;
+}

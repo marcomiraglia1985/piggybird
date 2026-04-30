@@ -1,26 +1,296 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-bg-elevated: var(--bg-elevated);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+
+  --color-brand: #8b5cf6;
+  --color-brand-2: #6366f1;
+
+  --color-income: #10b981;
+  --color-expense: #f43f5e;
+  --color-invest: #a855f7;
+  --color-savings: #f59e0b;
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.25rem;
+  --radius-2xl: 1.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Default = dark */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #07070a;
+  --bg-elevated: #0d0d12;
+  --surface: #131319;
+  --surface-2: #1a1a22;
+  --border: #23232d;
+  --border-strong: #2e2e3a;
+  --fg: #f5f5f7;
+  --fg-muted: #a1a1aa;
+  --fg-subtle: #6b6b76;
+  --shadow-color: 0 0% 0%;
+  --bg-tint: 139, 92, 246;
+  --bg-tint-2: 99, 102, 241;
+  --bg-tint-3: 16, 185, 129;
+  --bg-alpha-1: 0.12;
+  --bg-alpha-2: 0.08;
+  --bg-alpha-3: 0.05;
+  /* Rose alert text: chiaro su bg dark per garantire contrasto */
+  --color-rose-text: #fecdd3; /* rose-200 */
+  --color-rose-text-soft: #fda4af; /* rose-300 */
+  --color-amber-text: #fde68a; /* amber-200 */
+  --color-amber-text-soft: #fcd34d; /* amber-300 */
+  --color-emerald-text: #a7f3d0; /* emerald-200 */
+  --color-emerald-text-soft: #6ee7b7; /* emerald-300 */
+  --color-violet-text: #ddd6fe; /* violet-200 */
+  --color-violet-text-soft: #c4b5fd; /* violet-300 */
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #fafafa;
+  --bg-elevated: #ffffff;
+  --surface: #ffffff;
+  --surface-2: #f4f4f6;
+  --border: #e8e8ec;
+  --border-strong: #d4d4dc;
+  --fg: #18181b;
+  --fg-muted: #52525b;
+  --fg-subtle: #8a8a93;
+  --shadow-color: 240 6% 10%;
+  --bg-tint: 139, 92, 246;
+  --bg-tint-2: 99, 102, 241;
+  --bg-tint-3: 16, 185, 129;
+  --bg-alpha-1: 0.06;
+  --bg-alpha-2: 0.04;
+  --bg-alpha-3: 0.03;
+  /* Rose alert text: scuro su bg light per garantire contrasto */
+  --color-rose-text: #9f1239; /* rose-800 */
+  --color-rose-text-soft: #be123c; /* rose-700 */
+  --color-amber-text: #92400e; /* amber-800 */
+  --color-amber-text-soft: #b45309; /* amber-700 */
+  --color-emerald-text: #065f46; /* emerald-800 */
+  --color-emerald-text-soft: #047857; /* emerald-700 */
+  --color-violet-text: #5b21b6; /* violet-800 */
+  --color-violet-text-soft: #6d28d9; /* violet-700 */
+}
+
+html, body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -10%, rgba(var(--bg-tint), var(--bg-alpha-1)), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(var(--bg-tint-2), var(--bg-alpha-2)), transparent),
+    radial-gradient(ellipse 60% 40% at 0% 80%, rgba(var(--bg-tint-3), var(--bg-alpha-3)), transparent);
+  background-attachment: fixed;
+  min-height: 100vh;
+  transition: background-color 0.25s ease;
 }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 999px; }
+::-webkit-scrollbar-thumb:hover { background: var(--fg-subtle); }
+
+/* Utility classes */
+@utility surface {
+  background: color-mix(in oklab, var(--surface) 85%, transparent);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+@utility surface-2 {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+}
+
+@utility text-muted {
+  color: var(--fg-muted);
+}
+
+@utility text-subtle {
+  color: var(--fg-subtle);
+}
+
+@utility income {
+  color: var(--color-income);
+}
+
+@utility expense {
+  color: var(--color-expense);
+}
+
+/* Headline gradient text — adapts to theme */
+.text-headline {
+  background: linear-gradient(135deg, var(--fg) 0%, var(--fg-subtle) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.text-headline-violet {
+  background: linear-gradient(135deg, var(--fg) 0%, #a78bfa 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* Animations */
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fade-in 0.4s ease-out both; }
+.skeleton {
+  background: linear-gradient(90deg, var(--surface) 0%, var(--surface-2) 50%, var(--surface) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: var(--radius-md);
+}
+
+/* ===== AI Button animations ===== */
+/* Hover: gradient flow + sparkle twinkle. Sembra "vivo". */
+@keyframes ai-gradient-flow {
+  0%   { background-position: 0% 50%; }
+  50%  { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+@keyframes ai-sparkle-twinkle {
+  0%, 100% { transform: rotate(0deg) scale(1); }
+  20%      { transform: rotate(15deg) scale(1.18); }
+  45%      { transform: rotate(-8deg) scale(0.94); }
+  70%      { transform: rotate(10deg) scale(1.10); }
+}
+@keyframes ai-shimmer-sweep {
+  0%   { transform: translateX(-150%) skewX(-20deg); opacity: 0; }
+  20%  { opacity: 0.55; }
+  100% { transform: translateX(250%) skewX(-20deg); opacity: 0; }
+}
+/* Click: burst radiale + scale pulse */
+@keyframes ai-burst-ring {
+  0%   { opacity: 0.85; transform: scale(0.4); box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.6), 0 0 0 0 rgba(244, 63, 94, 0.4); }
+  100% { opacity: 0; transform: scale(2.4); box-shadow: 0 0 0 24px rgba(251, 146, 60, 0), 0 0 0 32px rgba(244, 63, 94, 0); }
+}
+@keyframes ai-scale-pulse {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(0.94); }
+  70%  { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.ai-btn {
+  position: relative;
+  background-size: 200% 200% !important;
+  background-position: 0% 50%;
+  isolation: isolate;
+  /* CSS vars updated via mousemove in JS — usate da .ai-spotlight */
+  --mx: 50%;
+  --my: 50%;
+}
+
+/* Spotlight scuro radiale che segue il cursore — magic spotlight effect.
+   Usa le CSS vars settate dall'handler onMouseMove. */
+.ai-spotlight {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  z-index: 0;
+  /* Ellipse schiacciata sull'asse verticale (2:1) → si adatta meglio
+     alla forma oblunga del bottone rispetto al cerchio. */
+  background: radial-gradient(
+    ellipse 55px 25px at var(--mx) var(--my),
+    rgba(0, 0, 0, 0.18) 0%,
+    rgba(0, 0, 0, 0.07) 40%,
+    transparent 80%
+  );
+}
+.ai-btn:hover .ai-spotlight {
+  opacity: 1;
+}
+/* Variante subtle: invece di scuro mostra un alone caldo (amber/orange) — sul
+   bg già trasparente uno scuro non si nota, un caldo brilla bene */
+.ai-btn-subtle .ai-spotlight {
+  background: radial-gradient(
+    ellipse 50px 22px at var(--mx) var(--my),
+    rgba(251, 146, 60, 0.18) 0%,
+    rgba(244, 63, 94, 0.10) 40%,
+    transparent 80%
+  );
+}
+.ai-btn:hover {
+  animation: ai-gradient-flow 2.4s ease-in-out infinite;
+}
+/* Shimmer luminoso che attraversa il bottone in hover (solo variant default solid) */
+.ai-btn-default::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.30) 50%,
+    transparent 100%
+  );
+  pointer-events: none;
+  opacity: 0;
+  z-index: 0;
+}
+.ai-btn-default:hover::before {
+  animation: ai-shimmer-sweep 1.6s ease-in-out infinite;
+}
+/* La icon "twinkle" su hover */
+.ai-btn:hover .ai-sparkle {
+  animation: ai-sparkle-twinkle 1.4s ease-in-out infinite;
+}
+/* Click activation: scale pulse (durata breve) */
+.ai-btn-activated {
+  animation: ai-scale-pulse 0.55s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+/* Burst ring overlay (renderizzato come ::after con animazione) */
+.ai-btn-activated::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;
+  animation: ai-burst-ring 0.7s ease-out forwards;
+}
+
+/* Recharts theming */
+.recharts-cartesian-axis-tick-value { fill: var(--fg-subtle); font-size: 11px; }
+.recharts-cartesian-grid-horizontal line,
+.recharts-cartesian-grid-vertical line { stroke: var(--border); }
+.recharts-tooltip-wrapper { outline: none !important; }

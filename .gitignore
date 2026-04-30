@@ -30,8 +30,18 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (NEVER commit — contiene DATABASE_URL, APP_MASTER_KEY, GITHUB_TOKEN, ecc.)
 .env*
+
+# SQLite local DB — contiene TUTTI i dati finanziari personali. Mai committare.
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+dev.db.backup-*
+
+# OS noise
+Thumbs.db
 
 # vercel
 .vercel
@@ -39,3 +49,5 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+/src/generated/prisma

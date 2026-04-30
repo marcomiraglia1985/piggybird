@@ -1,65 +1,313 @@
-import Image from "next/image";
+import {
+  getNetWorthHistory,
+  getCurrentNetWorth,
+  getAccountsBreakdown,
+} from "@/lib/queries/networth";
+import {
+  getInvestmentsGain,
+  getStockIrrInputs,
+  getSpyMonthlySeries,
+} from "@/lib/queries/investments";
+import {
+  getMonthSummary,
+  getTopExpenses,
+  getRecentTransactions,
+  getLifetimeStats,
+  getCategoryYearStats,
+  getAllCategoriesLight,
+} from "@/lib/queries/transactions";
+import { prisma } from "@/lib/prisma";
+import { estateValueStatus } from "@/lib/estate-value";
+import { getWorldLandPath } from "@/lib/world-map-path";
 
-export default function Home() {
+export const dynamic = "force-dynamic";
+import { NetWorthChart } from "@/components/charts/net-worth-chart";
+import { KpiHero } from "@/components/dashboard/kpi-hero";
+import { AccountsList } from "@/components/dashboard/accounts-list";
+import { MonthSummary } from "@/components/dashboard/month-summary";
+import { TopExpenses } from "@/components/dashboard/top-expenses";
+import { RecentTransactions } from "@/components/dashboard/recent-transactions";
+import { MilestonesWidget } from "@/components/dashboard/milestones-widget";
+import { FutureYouWidget } from "@/components/dashboard/future-you-widget";
+import { AssetAllocationWidget } from "@/components/dashboard/asset-allocation-widget";
+import { AnniversaryWidget } from "@/components/dashboard/anniversary-widget";
+import { EstateRoiWidget } from "@/components/dashboard/estate-roi-widget";
+import { CoffeeTrackerWidget } from "@/components/dashboard/coffee-tracker-widget";
+import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
+import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
+import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
+import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { getFreezeState } from "@/lib/account-freeze";
+
+export default async function Dashboard() {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
+
+  const [
+    history,
+    current,
+    accounts,
+    monthSum,
+    topExp,
+    recent,
+    investGain,
+    freezeState,
+    ownedEstates,
+    lifetime,
+    categoryStats,
+    allCategories,
+    stockIrrInputs,
+    spySeries,
+    worldLandPath,
+  ] = await Promise.all([
+    getNetWorthHistory(),
+    getCurrentNetWorth(),
+    getAccountsBreakdown(),
+    getMonthSummary(year, month),
+    getTopExpenses(year, month),
+    getRecentTransactions(25),
+    getInvestmentsGain(),
+    getFreezeState(),
+    prisma.realEstate.findMany({
+      where: { active: true, holding: "owned" },
+      select: {
+        id: true,
+        name: true,
+        emoji: true,
+        currentValue: true,
+        currentValueUpdatedAt: true,
+        purchasePrice: true,
+        purchaseDate: true,
+        ownershipShare: true,
+      },
+    }),
+    getLifetimeStats(),
+    getCategoryYearStats(year),
+    getAllCategoriesLight(),
+    getStockIrrInputs(),
+    getSpyMonthlySeries(),
+    getWorldLandPath(),
+  ]);
+
+  // Tutti gli estate attivi (per il CategoryPicker dei widget). Diverso da
+  // ownedEstates perché qui includiamo anche gli affitti per non perdere il
+  // raggruppamento di categorie estate-linked.
+  const allActiveEstates = await prisma.realEstate.findMany({
+    where: { active: true },
+    orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
+    select: { id: true, name: true, emoji: true },
+  });
+
+  const prevMonthTotal = history.length > 1 ? history[history.length - 2].total : undefined;
+  // Valore stimato totale degli immobili di proprietà — usa
+  // estateValueStatus() (currentValue → fallback purchasePrice) e applica
+  // ownershipShare per quote parziali.
+  const estatesValue = ownedEstates.reduce(
+    (s, e) => s + estateValueStatus(e).value * e.ownershipShare,
+    0,
+  );
+
+  // Per il widget Estate ROI: mappa solo gli immobili con purchasePrice +
+  // purchaseDate (necessari al calcolo del rendimento). Gli altri vengono
+  // esclusi dal widget (ma restano contati in estatesValue).
+  const estateRoiRows = ownedEstates
+    .filter((e) => e.purchasePrice != null && e.purchaseDate != null)
+    .map((e) => {
+      const status = estateValueStatus(e);
+      return {
+        id: e.id,
+        name: e.name,
+        emoji: e.emoji,
+        currentValue: status.value,
+        isFallback: status.isFallback,
+        purchasePrice: e.purchasePrice as number,
+        purchaseDateIso: (e.purchaseDate as Date).toISOString(),
+        ownershipShare: e.ownershipShare,
+      };
+    });
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
+    <DashboardShell
+      accountsFrozen={freezeState.frozen}
+      kpiHero={
+        <KpiHero
+          total={current.total}
+          liquidity={current.liquidity}
+          savings={current.savings}
+          investments={current.investments}
+          investmentsGainPct={investGain.hasCostData ? investGain.gainPct : null}
+          prevMonthTotal={prevMonthTotal}
         />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+      }
+      cards={[
+          {
+            id: "networth-chart",
+            label: "Andamento Liquid Net Worth",
+            node: <NetWorthChart key="networth-chart" data={history} />,
+            defaultSpan: 3,
+            minSpan: 1,
+            maxSpan: 3,
+            removable: false,
+          },
+          {
+            id: "accounts",
+            label: "Conti",
+            node: <AccountsList key="accounts" accounts={accounts} />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "month-summary",
+            label: "Mese corrente",
+            node: <MonthSummary key="month-summary" income={monthSum.income} expense={monthSum.expense} date={now} />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "top-expenses",
+            label: "Top spese",
+            node: <TopExpenses key="top-expenses" rows={topExp} />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "milestones",
+            label: "Milestones LNW",
+            node: <MilestonesWidget key="milestones" history={history} />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "asset-allocation",
+            label: "Asset allocation",
+            node: (
+              <AssetAllocationWidget
+                key="asset-allocation"
+                liquidity={current.liquidity}
+                savings={current.savings}
+                investments={current.investments}
+                estates={estatesValue}
+              />
+            ),
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "anniversary",
+            label: "Anniversary",
+            node: (
+              <AnniversaryWidget
+                key="anniversary"
+                firstDate={lifetime?.firstDate ?? null}
+                income={lifetime?.income ?? 0}
+                expense={lifetime?.expense ?? 0}
+                txCount={lifetime?.txCount ?? 0}
+              />
+            ),
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "estate-roi",
+            label: "Estate ROI",
+            node: <EstateRoiWidget key="estate-roi" estates={estateRoiRows} />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "coffee-tracker",
+            label: "Coffee tracker",
+            node: (
+              <CoffeeTrackerWidget
+                key="coffee-tracker"
+                year={year}
+                categories={allCategories}
+                estates={allActiveEstates}
+                stats={categoryStats}
+              />
+            ),
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
+            id: "sp500-beat",
+            label: "S&P beat",
+            node: (
+              <Sp500BeatWidget
+                key="sp500-beat"
+                cashflows={stockIrrInputs.cashflows}
+                finalByPlatform={stockIrrInputs.finalByPlatform}
+                platforms={stockIrrInputs.platforms}
+                spySeries={spySeries}
+              />
+            ),
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 3,
+          },
+          {
+            id: "world-clocks",
+            label: "Borse mondiali",
+            node: <WorldClocksWidget key="world-clocks" />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 3,
+          },
+          {
+            id: "world-daynight",
+            label: "Live Markets World Map",
+            node: (
+              <WorldDayNightWidget
+                key="world-daynight"
+                landPath={worldLandPath}
+              />
+            ),
+            defaultSpan: 2,
+            minSpan: 1,
+            maxSpan: 3,
+          },
+          {
+            id: "future-you",
+            label: "Future you",
+            node: <FutureYouWidget key="future-you" history={history} />,
+          },
+          {
+            id: "recent-transactions",
+            label: "Movimenti recenti",
+            node: (
+              <RecentTransactions
+                key="recent-transactions"
+                transactions={recent.map((t) => ({
+                  id: t.id,
+                  date: t.date.toISOString(),
+                  amount: t.amount,
+                  beneficiary: t.beneficiary,
+                  notes: t.notes,
+                  isJoint: t.isJoint,
+                  accountId: t.accountId,
+                  account: { name: t.account.name, emoji: t.account.emoji },
+                  category: t.category
+                    ? { emoji: t.category.emoji, name: t.category.name }
+                    : null,
+                }))}
+                accounts={accounts.map((a) => ({
+                  id: a.id,
+                  name: a.name,
+                  emoji: a.emoji,
+                }))}
+              />
+            ),
+          },
+      ]}
+    />
   );
 }
