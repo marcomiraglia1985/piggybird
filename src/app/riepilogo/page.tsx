@@ -251,8 +251,9 @@ export default async function RiepilogoPage({
     const rows = transferCats
       .map((c) => {
         const arr = matrix.get(c.id) ?? new Array(12).fill(0);
+        const arrF = matrixFuture.get(c.id) ?? new Array(12).fill(0);
         const total = arr.reduce((a, b) => a + b, 0);
-        return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, total };
+        return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, monthlyFuture: arrF, total };
       })
       .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
     if (rows.length > 0 || showAll) {
@@ -283,8 +284,9 @@ export default async function RiepilogoPage({
     const rows = groupCats
       .map((c) => {
         const arr = matrix.get(c.id) ?? new Array(12).fill(0);
+        const arrF = matrixFuture.get(c.id) ?? new Array(12).fill(0);
         const total = arr.reduce((a, b) => a + b, 0);
-        return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, total };
+        return { id: c.id, emoji: c.emoji, label: c.name, monthly: arr, monthlyFuture: arrF, total };
       })
       .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
     if (rows.length === 0 && !showAll) return null;
