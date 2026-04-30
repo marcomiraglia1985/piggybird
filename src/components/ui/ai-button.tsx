@@ -8,7 +8,7 @@ import { useState, useRef, type ButtonHTMLAttributes, type ReactNode } from "rea
  * Bottone "AI Powered" standardizzato per tutta la app.
  *
  * Identità visiva: gradient warm sunset (amber→orange→rose) che richiama
- * l'icona Moneybird (lovebird+maialino).
+ * l'icona Piggybird (lovebird+maialino).
  *
  * Animazioni:
  *   - Hover: gradient lentamente fluttua + shimmer luminoso attraversa

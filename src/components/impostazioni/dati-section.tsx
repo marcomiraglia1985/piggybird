@@ -90,7 +90,7 @@ export function DatiSection() {
             <div>
               <div className="font-medium">Backup automatico DB</div>
               <p className="text-[11px] text-[var(--fg-subtle)] mt-0.5">
-                Snapshot SQLite giornaliero in <code className="text-[10px]">{dir || "~/Library/Application Support/MoneybirdFinance/backups"}</code>.
+                Snapshot SQLite giornaliero in <code className="text-[10px]">{dir || "~/Library/Application Support/Piggybird/backups"}</code>.
                 Mantiene gli ultimi 30 giorni.
               </p>
               {lastBackup && (

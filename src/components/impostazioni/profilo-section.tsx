@@ -377,7 +377,7 @@ export function ProfiloSection() {
           </EditField>
 
           <EditField
-            label="Cosa cerchi in Moneybird? (multi-select)"
+            label="Cosa cerchi in Piggybird? (multi-select)"
             icon={<Target className="size-3" />}
           >
             <div className="grid grid-cols-1 gap-1">

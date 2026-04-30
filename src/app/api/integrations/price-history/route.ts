@@ -31,7 +31,7 @@ async function fetchStock(symbol: string, range: string) {
   const yahooSym = yahooFor(symbol);
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSym)}?interval=1d&range=${range}`;
   const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; MoneybirdFinance/1.0)" },
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; Piggybird/1.0)" },
     cache: "no-store",
   });
   if (!res.ok) return NextResponse.json({ error: `Yahoo ${res.status}` }, { status: 502 });

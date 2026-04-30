@@ -21,7 +21,7 @@ export const runtime = "nodejs";
  *       OPPURE Jaccard ≥ 0.6 sui token significativi
  *
  *  AI semantica (es. "Pokémon" vs "Yinli Zeng" stesso negozio) NON gestita —
- *  feature futura ✨ Moneybird.
+ *  feature futura ✨ Piggybird.
  */
 
 /** Token deboli: parole procedurali bancarie, suffissi societari, articoli,

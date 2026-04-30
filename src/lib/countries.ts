@@ -3,7 +3,7 @@
  * Usata dal CountryPicker del profilo utente.
  *
  * Scope: solo Europa (EU 27 + extra-EU geograficamente europei). Niente paesi
- * oversea perché Moneybird non ha ancora supporto bancario al di fuori
+ * oversea perché Piggybird non ha ancora supporto bancario al di fuori
  * dell'area europea. Quando aggiungeremo broker/banche extra-EU, espandere
  * questa lista.
  *

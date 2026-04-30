@@ -442,7 +442,7 @@ export function AutoCategorizeButton({
                   Auto-categorize
                 </h2>
                 <p className="text-xs text-[var(--fg-muted)] mt-1">
-                  Suggerimenti generati da Moneybird basati sui tuoi pattern
+                  Suggerimenti generati da Piggybird basati sui tuoi pattern
                   storici. Rivedi e modifica prima di applicare.
                 </p>
               </div>
@@ -572,7 +572,7 @@ function LoadingStep({ limit, elapsed }: { limit: number; elapsed: number }) {
       <div className="size-10 mx-auto rounded-full border-2 border-orange-500/30 border-t-orange-500 animate-spin" />
       <div className="space-y-1">
         <p className="text-sm text-[var(--fg-muted)]">
-          Moneybird sta analizzando {limit} movimenti…
+          Piggybird sta analizzando {limit} movimenti…
         </p>
         <p className="text-[11px] text-[var(--fg-subtle)] tabular-nums">
           {formatSeconds(elapsedSec)} di {formatSeconds(estimated)}{" "}

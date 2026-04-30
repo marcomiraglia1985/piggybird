@@ -104,13 +104,13 @@ export function WelcomeOnboarding() {
           <div className="flex items-center gap-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/moneybird-icon-white.png"
-              alt="Moneybird"
+              src="/piggybird-icon-white.png"
+              alt="Piggybird"
               className="size-20 object-contain shrink-0"
             />
             <div>
               <h2 className="text-xl font-semibold tracking-tight">
-                Benvenuto su Moneybird
+                Benvenuto su Piggybird
               </h2>
               <p className="text-xs text-[var(--fg-muted)] mt-0.5">
                 Configura il tuo profilo per iniziare
@@ -164,7 +164,7 @@ export function WelcomeOnboarding() {
           {/* === OPTIONAL DEMOGRAPHIC === */}
           <div className="pt-3 mt-2 border-t border-[var(--border)] space-y-3">
             <p className="text-[11px] text-[var(--fg-muted)] uppercase tracking-wider font-medium">
-              Aiutaci a capire chi usa Moneybird (opzionale)
+              Aiutaci a capire chi usa Piggybird (opzionale)
             </p>
 
             <Field label="Data di nascita">
@@ -232,7 +232,7 @@ export function WelcomeOnboarding() {
               </div>
             </Field>
 
-            <Field label="Cosa cerchi in Moneybird? (multi-select)">
+            <Field label="Cosa cerchi in Piggybird? (multi-select)">
               <div className="grid grid-cols-1 gap-1">
                 {GOAL_OPTIONS.map((g) => (
                   <ChoiceButton
@@ -267,7 +267,7 @@ export function WelcomeOnboarding() {
                 </>
               ) : (
                 <>
-                  Inizia a usare Moneybird
+                  Inizia a usare Piggybird
                   <ChevronRight className="size-4" />
                 </>
               )}

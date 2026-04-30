@@ -17,7 +17,7 @@ export type UserProfile = {
   familyStatus: string; // "single" | "couple" | "family" | "other" | ""
   profession: string; // "employee" | "freelance" | "entrepreneur" | "student" | "other" | ""
   trackingExperience: string; // "first" | "excel" | "fintech" | "other" | ""
-  /** Multi-select: cosa cerchi in Moneybird */
+  /** Multi-select: cosa cerchi in Piggybird */
   goals: string[]; // subset di GOAL_OPTIONS values
 };
 

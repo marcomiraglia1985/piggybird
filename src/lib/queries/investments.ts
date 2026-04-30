@@ -265,7 +265,7 @@ export async function getSpyMonthlySeries() {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=${periodStart}&period2=${periodEnd}&interval=1mo&events=div%2Csplit`;
   try {
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; MoneybirdFinance/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Piggybird/1.0)" },
       next: { revalidate: 3600 },
     });
     if (!res.ok) return null;

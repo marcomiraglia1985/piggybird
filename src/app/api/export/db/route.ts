@@ -13,7 +13,7 @@ export async function GET() {
   return new NextResponse(data, {
     headers: {
       "Content-Type": "application/x-sqlite3",
-      "Content-Disposition": `attachment; filename="moneybird-finance-backup-${new Date().toISOString().slice(0, 10)}.db"`,
+      "Content-Disposition": `attachment; filename="piggybird-finance-backup-${new Date().toISOString().slice(0, 10)}.db"`,
     },
   });
 }

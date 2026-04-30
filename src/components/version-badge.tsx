@@ -102,7 +102,7 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
               <div className="flex items-center justify-between gap-3">
                 <h2 className="text-lg font-semibold tracking-tight inline-flex items-center gap-2">
                   <Sparkles className="size-5 text-emerald-400" />
-                  Nuova versione di Moneybird
+                  Nuova versione di Piggybird
                 </h2>
                 <button
                   onClick={() => setOpen(false)}

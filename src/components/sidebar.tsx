@@ -155,13 +155,13 @@ export function Sidebar({
         <Link href="/" className="flex items-center gap-2.5">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/moneybird-icon-white.png"
-            alt="Moneybird Finance"
+            src="/piggybird-icon-white.png"
+            alt="Piggybird"
             className="size-[61px] object-contain"
           />
           <div className="flex flex-col leading-tight">
             <span className="text-sm font-semibold tracking-tight">
-              Moneybird Finance
+              Piggybird
             </span>
             <span className="text-[10px] text-[var(--fg-subtle)] tracking-tight">
               Save smart. Fly higher.

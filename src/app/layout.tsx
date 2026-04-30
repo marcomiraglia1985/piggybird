@@ -25,7 +25,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Moneybird Finance",
+  title: "Piggybird",
   description: "Sistema personale di gestione finanze",
 };
 

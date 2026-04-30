@@ -37,13 +37,13 @@ function resolveDbPath(): string {
   const m = url.match(/^file:(.*)$/);
   const raw = m ? m[1] : "./dev.db";
   if (raw.startsWith("/")) return raw;
-  // Prisma risolve relativi a `prisma/` directory; ma il convention Moneybird
+  // Prisma risolve relativi a `prisma/` directory; ma il convention Piggybird
   // mette dev.db nella root dell'app/. Proviamo entrambi.
   const candidates = [
     join(process.cwd(), raw.replace(/^\.\//, "")),
     join(process.cwd(), "prisma", raw.replace(/^\.\//, "")),
   ];
-  return candidates[0]; // primo è il più probabile per Moneybird
+  return candidates[0]; // primo è il più probabile per Piggybird
 }
 
 /** Slug user per nome file: usa local-part dell'email (lowercase, no dots). */
@@ -110,7 +110,7 @@ export async function submitDebugSnapshot(opts: {
     `- **Download diretto:** ${uploaded.content.download_url}`,
     ``,
     `---`,
-    `_Auto-generated da Moneybird debug snapshot uploader._`,
+    `_Auto-generated da Piggybird debug snapshot uploader._`,
   ].join("\n");
 
   const issue = await createIssue(title, body, ["snapshot", "beta-bug"]);

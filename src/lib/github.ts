@@ -1,6 +1,6 @@
 /**
- * Helper minimale per le API GitHub usate da Moneybird:
- *   - createIssue: snapshot di debug → issue su `marcomiraglia1985/moneybird`
+ * Helper minimale per le API GitHub usate da Piggybird:
+ *   - createIssue: snapshot di debug → issue su `marcomiraglia1985/piggybird`
  *   - uploadFile: upload di file (es. dev.db.gz) via Contents API
  *   - getLatestRelease: per il check update notifier
  *
@@ -36,7 +36,7 @@ async function gh<T>(
     Authorization: `Bearer ${token}`,
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
-    "User-Agent": "Moneybird-App",
+    "User-Agent": "Piggybird-App",
   };
   let body: BodyInit | undefined;
   if (init.body !== undefined) {

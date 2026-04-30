@@ -61,7 +61,7 @@ export async function fetchYahooDaily(
     const periodEnd = Math.floor(Date.now() / 1000);
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(yahooSymbol)}?period1=${periodStart}&period2=${periodEnd}&interval=1d&events=div%2Csplit`;
     const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (compatible; MoneybirdFinance/1.0)" },
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; Piggybird/1.0)" },
       next: { revalidate: 86_400 },
     });
     if (!res.ok) {

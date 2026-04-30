@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 /**
  * Genera un backup del DB SQLite (solo se non esiste già uno per oggi).
- * Path: ~/Library/Application Support/MoneybirdFinance/backups/dev-YYYY-MM-DD.db
+ * Path: ~/Library/Application Support/Piggybird/backups/dev-YYYY-MM-DD.db
  * Mantiene gli ultimi 30 backup, cancella i più vecchi.
  */
 export async function POST() {
@@ -22,7 +22,7 @@ export async function POST() {
     os.homedir(),
     "Library",
     "Application Support",
-    "MoneybirdFinance",
+    "Piggybird",
     "backups",
   );
   fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
@@ -72,7 +72,7 @@ export async function GET() {
     os.homedir(),
     "Library",
     "Application Support",
-    "MoneybirdFinance",
+    "Piggybird",
     "backups",
   );
   if (!fs.existsSync(backupDir)) {

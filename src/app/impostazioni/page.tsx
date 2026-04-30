@@ -51,7 +51,7 @@ export default async function ImpostazioniPage() {
       </Section>
 
       <p className="text-[11px] text-[var(--fg-subtle)] text-center pt-4 pb-2">
-        💰 Moneybird Finance v{pkg.version} · Save smart. Fly higher.
+        💰 Piggybird v{pkg.version} · Save smart. Fly higher.
       </p>
     </div>
   );
