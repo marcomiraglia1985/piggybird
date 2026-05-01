@@ -107,9 +107,12 @@ export function DebugSnapshotSection() {
                     <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
                     <div>
                       <strong>Cosa viene inviato:</strong> una copia compressa del tuo
-                      database (movimenti, conti, ecc.) + le info del tuo profilo
-                      (nome, email, paesi, demografica). I tuoi dati finanziari saranno
-                      visibili al developer per riprodurre il bug.
+                      database (movimenti, conti, ecc.) e le info del tuo profilo
+                      (nome, email, paesi, demografica, ecc.)
+                      <br />
+                      <strong>Nota:</strong> I tuoi dati finanziari saranno visibili al
+                      developer per riprodurre il bug; i tuoi dati finanziari NON
+                      saranno conservati.
                     </div>
                   </div>
 
