@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncBinanceWallet, sourceLabel } from "@/lib/binance";
 import { prisma } from "@/lib/prisma";
+import { markSynced } from "@/lib/credentials";
 
 export const runtime = "nodejs";
 
@@ -44,6 +45,7 @@ export async function POST() {
       });
     }
 
+    await markSynced("binance");
     return NextResponse.json({
       ok: true,
       totalEur,

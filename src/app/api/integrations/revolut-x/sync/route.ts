@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { getBalances } from "@/lib/revolut-x";
 import { priceInEur } from "@/lib/crypto-prices";
+import { markSynced } from "@/lib/credentials";
 
 export const runtime = "nodejs";
 
@@ -104,6 +105,7 @@ export async function POST() {
       },
     });
 
+    await markSynced("revolut-x");
     return NextResponse.json({
       ok: true,
       assetsSynced: seen.size,

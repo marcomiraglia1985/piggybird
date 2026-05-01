@@ -70,9 +70,11 @@ export function DebugSnapshotSection() {
         <button
           type="button"
           onClick={() => setOpen(true)}
-          className="h-8 px-3 rounded-lg bg-rose-500/15 border border-rose-500/40 text-xs text-rose-200 hover:bg-rose-500/25 inline-flex items-center gap-1.5 font-medium"
+          className="group inline-flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-lg bg-gradient-to-br from-rose-500/[0.12] to-orange-500/[0.06] border border-rose-500/30 text-xs font-medium text-rose-300 hover:from-rose-500/[0.18] hover:to-orange-500/[0.10] hover:border-rose-500/50 hover:text-rose-200 transition-colors"
         >
-          <Bug className="size-3.5" />
+          <span className="size-5 inline-flex items-center justify-center rounded-md bg-rose-500/20 border border-rose-500/30">
+            <Bug className="size-3" />
+          </span>
           Mandami uno snapshot
         </button>
       </div>
