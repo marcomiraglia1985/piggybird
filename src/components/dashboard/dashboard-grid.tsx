@@ -416,42 +416,46 @@ export function DashboardGrid({
   const staticView = (() => {
     const hasWide = visibleP.wide.length > 0;
     const hasCols = visibleP.cols.some((col) => col.length > 0);
+    // Unifichiamo wide + cols in UNA singola grid con auto-flow dense:
+    // CSS riempie automaticamente i gap orizzontali (es. dopo un widget
+    // wide=2, un widget narrow alla sua destra "sale" nello slot libero).
+    // Ordine logico: prima i wide, poi le cols flatten row-by-row
+    // (col0[0], col1[0], col2[0], col0[1], col1[1], ...).
+    const flatItems: { id: string; span: number }[] = [];
+    for (const id of visibleP.wide) {
+      const card = cardMap.get(id);
+      if (!card) continue;
+      flatItems.push({ id, span: getCardSpan(card) });
+    }
+    const maxColLen = Math.max(0, ...visibleP.cols.map((c) => c.length));
+    for (let row = 0; row < maxColLen; row++) {
+      for (let c = 0; c < visibleP.cols.length; c++) {
+        const id = visibleP.cols[c]?.[row];
+        if (!id) continue;
+        const card = cardMap.get(id);
+        if (!card) continue;
+        flatItems.push({ id, span: getCardSpan(card) });
+      }
+    }
     return (
       <div className="space-y-6">
-        {hasWide && (
+        {(hasWide || hasCols) && (
           <div
-            className="grid gap-6"
+            className="grid gap-6 items-start"
             style={{
               gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
               gridAutoFlow: "row dense",
             }}
           >
-            {visibleP.wide.map((id) => {
+            {flatItems.map(({ id, span }) => {
               const card = cardMap.get(id);
               if (!card) return null;
-              const sp = getCardSpan(card);
               return (
-                <div key={id} style={{ gridColumn: `span ${sp}` }}>
+                <div key={id} style={{ gridColumn: `span ${span}` }}>
                   {card.node}
                 </div>
               );
             })}
-          </div>
-        )}
-        {hasCols && (
-          <div
-            className="grid gap-6 items-start"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-          >
-            {visibleP.cols.map((col, idx) => (
-              <div key={idx} className="flex flex-col gap-6">
-                {col.map((id) => {
-                  const card = cardMap.get(id);
-                  if (!card) return null;
-                  return <div key={id}>{card.node}</div>;
-                })}
-              </div>
-            ))}
           </div>
         )}
       </div>
