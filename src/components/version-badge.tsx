@@ -68,29 +68,24 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => updateAvailable && setOpen(true)}
-        disabled={!updateAvailable}
-        className={`text-[10px] font-normal tracking-normal mt-1.5 inline-flex items-center gap-1 ${
-          updateAvailable
-            ? "text-emerald-300 cursor-pointer hover:text-emerald-200"
-            : "text-[var(--fg-subtle)] cursor-default"
-        }`}
-        title={
-          updateAvailable
-            ? `Aggiornamento disponibile: v${info?.latest}`
-            : "Versione installata"
-        }
-      >
-        v{currentVersion}
-        {updateAvailable && (
-          <>
-            <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            <span className="font-medium">aggiornamento</span>
-          </>
-        )}
-      </button>
+      {updateAvailable ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          title={`Aggiornamento disponibile: v${info?.latest}`}
+          className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-[10px] font-semibold tracking-normal text-emerald-200 hover:bg-emerald-500/25 hover:border-emerald-400/60 transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)] animate-[pulse_2s_ease-in-out_infinite]"
+        >
+          <Sparkles className="size-3" />
+          <span>Nuova v{info?.latest} disponibile</span>
+        </button>
+      ) : (
+        <span
+          className="text-[10px] font-normal tracking-normal mt-1.5 inline-flex items-center gap-1 text-[var(--fg-subtle)]"
+          title="Versione installata"
+        >
+          v{currentVersion}
+        </span>
+      )}
 
       {mounted && createPortal(
       <AnimatePresence>
