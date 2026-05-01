@@ -226,22 +226,24 @@ export default async function RiepilogoPage({
     })
     .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
 
-  const estateRows = estates
-    .map((e) => {
-      const arr = estateMatrix.get(e.id) ?? new Array(12).fill(0);
-      const arrF = estateMatrixFuture.get(e.id) ?? new Array(12).fill(0);
-      const total = arr.reduce((a, b) => a + b, 0);
-      return {
-        id: e.id,
-        emoji: e.emoji ?? "🏠",
-        label: e.name,
-        monthly: arr,
-        monthlyFuture: arrF,
-        total,
-        href: `/estates/${e.id}`,
-      };
-    })
-    .filter((r) => showAll || r.total !== 0 || r.monthly.some((v) => v !== 0));
+  // Per gli estates mostriamo SEMPRE tutti gli estates active (no filter
+  // per total!=0): sono entità "fisse" del patrimonio, l'utente si aspetta
+  // di vederle tutte anche se non hanno cashflow nel periodo. Per le
+  // categorie il filter resta (altrimenti troppo rumore).
+  const estateRows = estates.map((e) => {
+    const arr = estateMatrix.get(e.id) ?? new Array(12).fill(0);
+    const arrF = estateMatrixFuture.get(e.id) ?? new Array(12).fill(0);
+    const total = arr.reduce((a, b) => a + b, 0);
+    return {
+      id: e.id,
+      emoji: e.emoji ?? "🏠",
+      label: e.name,
+      monthly: arr,
+      monthlyFuture: arrF,
+      total,
+      href: `/estates/${e.id}`,
+    };
+  });
 
   const matrixGroups: GroupRow[] = [];
 
