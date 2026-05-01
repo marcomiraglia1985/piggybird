@@ -132,6 +132,11 @@ export function SyncAllButton({
         }
       }),
     );
+    // Invalida la cache della history /investimenti: ora i prezzi/posizioni
+    // possono essere cambiati. Al prossimo accesso il chart viene ricalcolato
+    // (e poi cached di nuovo via signature hash).
+    fetch("/api/investments/cache/invalidate", { method: "POST" }).catch(() => {});
+
     setSyncing(false);
 
     const blockingErrors = out.filter((r) => !r.ok && !r.optional);

@@ -308,6 +308,25 @@ model Setting {
   value String
 }
 
+/** Cache persistente del chart history /investimenti.
+ *  Calcolare la history (replay daily + fetch Yahoo + Binance prices) costa
+ *  5-10s. Cache invalidata via signature hash dei dati input: stesso hash
+ *  → cache hit, nessun fetch. Hash cambia se cambia anche solo un trade,
+ *  position, costEur, currentValue → cache miss → ricalcolo + save. */
+model InvestmentsHistoryCache {
+  id          String   @id @default("current")
+  /** sha256 hash di JSON.stringify ordinato di tutti i dati di input
+   *  (stock positions/trades, crypto positions/trades/costBases, investments).
+   *  Stesso hash → safe to use cached history. */
+  signature   String
+  /** JSON.stringify dell'array HistoryPoint[] */
+  history     String
+  /** Quanti ms ha richiesto il calcolo (telemetry per monitorare slowness) */
+  computeMs   Int?
+  generatedAt DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
 /** Cache di parser CSV/XLSX riconosciuti via AI fallback.
  *  Quando un utente importa un file di banca non supportata dai parser
  *  deterministici, la app invia le prime righe a Claude (con la dev API

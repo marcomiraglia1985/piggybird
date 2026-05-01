@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { prisma } from "@/lib/prisma";
 import { yahooFor } from "@/lib/yahoo-ticker-map";
 import {
@@ -43,7 +44,121 @@ export type HistoryPoint = {
   isFuture: false;
 };
 
+/**
+ * Computa signature hash di tutti i dati input che impattano il calcolo
+ * della history. Stesso hash → safe cache hit. Diverso hash → ricalcolo.
+ *
+ * Include: tutte le posizioni, tutti i trade, tutti i cost basis, tutte le
+ * Investment con costEur/currentValue. Anche `Date.now()` rounded a 1h
+ * (perché il "punto oggi" del chart usa currentValue + currentPrice che
+ * possono cambiare, e vogliamo refresh ogni ora minimo).
+ */
+async function computeInputSignature(): Promise<string> {
+  const [
+    stockPositions,
+    stockTrades,
+    cryptoPositions,
+    cryptoTrades,
+    cryptoCostBases,
+    investments,
+  ] = await Promise.all([
+    prisma.stockPosition.findMany({
+      select: { ticker: true, shares: true, avgCost: true, currentPrice: true, fxToEur: true, platform: true },
+      orderBy: [{ platform: "asc" }, { ticker: "asc" }],
+    }),
+    prisma.stockTrade.findMany({
+      select: { id: true, date: true, type: true, ticker: true, quantity: true, pricePerUnit: true, amountEur: true, fxRate: true, platform: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.cryptoPosition.findMany({
+      select: { asset: true, amount: true, eurValue: true, platform: true },
+      orderBy: [{ platform: "asc" }, { asset: "asc" }],
+    }),
+    prisma.cryptoTrade.findMany({
+      select: { id: true, date: true, direction: true, asset: true, quantity: true, totalEur: true, platform: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.cryptoCostBasis.findMany({
+      select: { platform: true, asset: true, costEur: true },
+      orderBy: [{ platform: "asc" }, { asset: "asc" }],
+    }),
+    prisma.investment.findMany({
+      select: { type: true, platform: true, costEur: true, currentValue: true },
+      orderBy: [{ type: "asc" }, { platform: "asc" }],
+    }),
+  ]);
+  // Includo anche l'hour bucket corrente: "current value" può cambiare
+  // intraday (currentPrice), vogliamo refresh max 1 volta/ora.
+  const hourBucket = Math.floor(Date.now() / (3600 * 1000));
+  const payload = JSON.stringify({
+    stockPositions,
+    stockTrades,
+    cryptoPositions,
+    cryptoTrades,
+    cryptoCostBases,
+    investments,
+    hourBucket,
+  });
+  return createHash("sha256").update(payload).digest("hex").slice(0, 32);
+}
+
+/**
+ * Invalida esplicitamente la cache (es. dopo sync API che ha aggiornato i
+ * prezzi correnti). Dopo questa chiamata il prossimo getInvestmentsHistoryV2
+ * forza il ricalcolo.
+ */
+export async function invalidateInvestmentsHistoryCache(): Promise<void> {
+  await prisma.investmentsHistoryCache
+    .delete({ where: { id: "current" } })
+    .catch(() => null);
+}
+
 export async function getInvestmentsHistoryV2(): Promise<HistoryPoint[]> {
+  // Cache lookup via signature hash dei dati input
+  const signature = await computeInputSignature();
+  const cached = await prisma.investmentsHistoryCache
+    .findUnique({ where: { id: "current" } })
+    .catch(() => null);
+  if (cached && cached.signature === signature) {
+    try {
+      return JSON.parse(cached.history) as HistoryPoint[];
+    } catch {
+      // Cache corrupted: fall through al recompute
+    }
+  }
+
+  // Cache miss → recompute
+  const startMs = Date.now();
+  const result = await computeHistoryFromScratch();
+  const elapsedMs = Date.now() - startMs;
+
+  // Save to cache (upsert per signature singleton)
+  await prisma.investmentsHistoryCache
+    .upsert({
+      where: { id: "current" },
+      create: {
+        id: "current",
+        signature,
+        history: JSON.stringify(result),
+        computeMs: elapsedMs,
+      },
+      update: {
+        signature,
+        history: JSON.stringify(result),
+        computeMs: elapsedMs,
+      },
+    })
+    .catch((e) => {
+      console.warn("[investments-history] cache save failed:", e);
+    });
+
+  console.log(
+    `[investments-history] computed in ${elapsedMs}ms (sig=${signature.slice(0, 8)}, points=${result.length})`,
+  );
+  return result;
+}
+
+async function computeHistoryFromScratch(): Promise<HistoryPoint[]> {
   const [stockPositions, stockTrades, cryptoPositions, cryptoTrades, allInvestments] =
     await Promise.all([
       prisma.stockPosition.findMany({}),
