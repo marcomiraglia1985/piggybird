@@ -6,9 +6,14 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ChevronRight, Loader2 } from "lucide-react";
 import { CountryPicker } from "@/components/ui/country-picker";
 import {
+  CHILDREN_COUNT_OPTIONS,
   FAMILY_STATUSES,
   GOAL_OPTIONS,
+  HOUSING_TYPE_OPTIONS,
+  MONTHLY_INCOME_OPTIONS,
   PROFESSIONS,
+  RETIREMENT_AGE_OPTIONS,
+  RISK_TOLERANCE_OPTIONS,
   TRACKING_EXPERIENCES,
   calcAge,
 } from "@/lib/profile-options";
@@ -32,6 +37,11 @@ export function WelcomeOnboarding() {
   const [profession, setProfession] = useState("");
   const [trackingExperience, setTrackingExperience] = useState("");
   const [goals, setGoals] = useState<string[]>([]);
+  const [monthlyIncome, setMonthlyIncome] = useState("");
+  const [childrenCount, setChildrenCount] = useState("");
+  const [retirementAge, setRetirementAge] = useState("");
+  const [riskTolerance, setRiskTolerance] = useState("");
+  const [housingType, setHousingType] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -48,6 +58,11 @@ export function WelcomeOnboarding() {
         if (p.profession) setProfession(p.profession);
         if (p.trackingExperience) setTrackingExperience(p.trackingExperience);
         if (Array.isArray(p.goals)) setGoals(p.goals);
+        if (p.monthlyIncome) setMonthlyIncome(p.monthlyIncome);
+        if (p.childrenCount) setChildrenCount(p.childrenCount);
+        if (p.retirementAge) setRetirementAge(p.retirementAge);
+        if (p.riskTolerance) setRiskTolerance(p.riskTolerance);
+        if (p.housingType) setHousingType(p.housingType);
       })
       .catch(() => {});
   }, []);
@@ -76,6 +91,11 @@ export function WelcomeOnboarding() {
           profession,
           trackingExperience,
           goals,
+          monthlyIncome,
+          childrenCount,
+          retirementAge,
+          riskTolerance,
+          housingType,
         }),
       });
       if (!r.ok) {
@@ -242,6 +262,80 @@ export function WelcomeOnboarding() {
                   >
                     <span className="mr-1.5">{g.emoji}</span>
                     {g.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Reddito mensile (bucket)">
+              <div className="grid grid-cols-3 gap-1">
+                {MONTHLY_INCOME_OPTIONS.map((o) => (
+                  <ChoiceButton
+                    key={o.value}
+                    selected={monthlyIncome === o.value}
+                    onClick={() => setMonthlyIncome(monthlyIncome === o.value ? "" : o.value)}
+                  >
+                    {o.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Numero di figli">
+              <div className="grid grid-cols-4 gap-1">
+                {CHILDREN_COUNT_OPTIONS.map((o) => (
+                  <ChoiceButton
+                    key={o.value}
+                    selected={childrenCount === o.value}
+                    onClick={() => setChildrenCount(childrenCount === o.value ? "" : o.value)}
+                  >
+                    <span className="mr-1">{o.emoji}</span>
+                    {o.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Età pensionamento desiderata">
+              <div className="grid grid-cols-3 gap-1">
+                {RETIREMENT_AGE_OPTIONS.map((o) => (
+                  <ChoiceButton
+                    key={o.value}
+                    selected={retirementAge === o.value}
+                    onClick={() => setRetirementAge(retirementAge === o.value ? "" : o.value)}
+                  >
+                    <span className="mr-1">{o.emoji}</span>
+                    {o.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Tolleranza rischio investimenti">
+              <div className="grid grid-cols-3 gap-1">
+                {RISK_TOLERANCE_OPTIONS.map((o) => (
+                  <ChoiceButton
+                    key={o.value}
+                    selected={riskTolerance === o.value}
+                    onClick={() => setRiskTolerance(riskTolerance === o.value ? "" : o.value)}
+                  >
+                    <span className="mr-1">{o.emoji}</span>
+                    {o.label}
+                  </ChoiceButton>
+                ))}
+              </div>
+            </Field>
+
+            <Field label="Tipo abitazione attuale">
+              <div className="grid grid-cols-2 gap-1">
+                {HOUSING_TYPE_OPTIONS.map((o) => (
+                  <ChoiceButton
+                    key={o.value}
+                    selected={housingType === o.value}
+                    onClick={() => setHousingType(housingType === o.value ? "" : o.value)}
+                  >
+                    <span className="mr-1">{o.emoji}</span>
+                    {o.label}
                   </ChoiceButton>
                 ))}
               </div>

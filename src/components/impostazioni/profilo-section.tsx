@@ -20,9 +20,14 @@ import {
 import { CountryPicker } from "@/components/ui/country-picker";
 import { flagFor } from "@/lib/countries";
 import {
+  CHILDREN_COUNT_OPTIONS,
   FAMILY_STATUSES,
   GOAL_OPTIONS,
+  HOUSING_TYPE_OPTIONS,
+  MONTHLY_INCOME_OPTIONS,
   PROFESSIONS,
+  RETIREMENT_AGE_OPTIONS,
+  RISK_TOLERANCE_OPTIONS,
   TRACKING_EXPERIENCES,
   calcAge,
 } from "@/lib/profile-options";
@@ -41,6 +46,11 @@ export function ProfiloSection() {
   const [profession, setProfession] = useState("");
   const [trackingExperience, setTrackingExperience] = useState("");
   const [goals, setGoals] = useState<string[]>([]);
+  const [monthlyIncome, setMonthlyIncome] = useState("");
+  const [childrenCount, setChildrenCount] = useState("");
+  const [retirementAge, setRetirementAge] = useState("");
+  const [riskTolerance, setRiskTolerance] = useState("");
+  const [housingType, setHousingType] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -60,6 +70,11 @@ export function ProfiloSection() {
         setProfession(p.profession ?? "");
         setTrackingExperience(p.trackingExperience ?? "");
         setGoals(Array.isArray(p.goals) ? p.goals : []);
+        setMonthlyIncome(p.monthlyIncome ?? "");
+        setChildrenCount(p.childrenCount ?? "");
+        setRetirementAge(p.retirementAge ?? "");
+        setRiskTolerance(p.riskTolerance ?? "");
+        setHousingType(p.housingType ?? "");
         setLoaded(true);
       })
       .catch(() => setLoaded(true));
@@ -112,6 +127,11 @@ export function ProfiloSection() {
   // Helpers per il read-only display
   const familyLabel = FAMILY_STATUSES.find((f) => f.value === familyStatus);
   const professionLabel = PROFESSIONS.find((p) => p.value === profession);
+  const incomeLabel = MONTHLY_INCOME_OPTIONS.find((o) => o.value === monthlyIncome);
+  const childrenLabel = CHILDREN_COUNT_OPTIONS.find((o) => o.value === childrenCount);
+  const retirementLabel = RETIREMENT_AGE_OPTIONS.find((o) => o.value === retirementAge);
+  const riskLabel = RISK_TOLERANCE_OPTIONS.find((o) => o.value === riskTolerance);
+  const housingLabel = HOUSING_TYPE_OPTIONS.find((o) => o.value === housingType);
   const experienceLabel = TRACKING_EXPERIENCES.find((t) => t.value === trackingExperience);
   const goalLabels = GOAL_OPTIONS.filter((g) => goals.includes(g.value));
 
@@ -259,6 +279,39 @@ export function ProfiloSection() {
               <Loading />
             )}
           </Row>
+          <Row icon={<UserIcon className="size-3" />} label="Reddito">
+            {loaded ? (
+              incomeLabel ? <>💶 {incomeLabel.label}</> : <Empty />
+            ) : <Loading />}
+          </Row>
+          <Row icon={<UsersIcon className="size-3" />} label="Figli">
+            {loaded ? (
+              childrenLabel ? (
+                <><span className="mr-1">{childrenLabel.emoji}</span>{childrenLabel.label}</>
+              ) : <Empty />
+            ) : <Loading />}
+          </Row>
+          <Row icon={<Cake className="size-3" />} label="Pensione">
+            {loaded ? (
+              retirementLabel ? (
+                <><span className="mr-1">{retirementLabel.emoji}</span>{retirementLabel.label}</>
+              ) : <Empty />
+            ) : <Loading />}
+          </Row>
+          <Row icon={<Target className="size-3" />} label="Rischio">
+            {loaded ? (
+              riskLabel ? (
+                <><span className="mr-1">{riskLabel.emoji}</span>{riskLabel.label}</>
+              ) : <Empty />
+            ) : <Loading />}
+          </Row>
+          <Row icon={<Globe className="size-3" />} label="Casa">
+            {loaded ? (
+              housingLabel ? (
+                <><span className="mr-1">{housingLabel.emoji}</span>{housingLabel.label}</>
+              ) : <Empty />
+            ) : <Loading />}
+          </Row>
         </div>
       ) : (
         // === EDIT VIEW ===
@@ -392,6 +445,100 @@ export function ProfiloSection() {
                 >
                   <span className="mr-1.5">{g.emoji}</span>
                   {g.label}
+                </ChoiceButton>
+              ))}
+            </div>
+          </EditField>
+
+          <EditField label="Reddito mensile" icon={<UserIcon className="size-3" />}>
+            <div className="grid grid-cols-2 gap-1">
+              {MONTHLY_INCOME_OPTIONS.map((o) => (
+                <ChoiceButton
+                  key={o.value}
+                  selected={monthlyIncome === o.value}
+                  onClick={() => {
+                    const next = monthlyIncome === o.value ? "" : o.value;
+                    setMonthlyIncome(next);
+                    persist({ monthlyIncome: next });
+                  }}
+                >
+                  {o.label}
+                </ChoiceButton>
+              ))}
+            </div>
+          </EditField>
+
+          <EditField label="Numero di figli" icon={<UsersIcon className="size-3" />}>
+            <div className="grid grid-cols-4 gap-1">
+              {CHILDREN_COUNT_OPTIONS.map((o) => (
+                <ChoiceButton
+                  key={o.value}
+                  selected={childrenCount === o.value}
+                  onClick={() => {
+                    const next = childrenCount === o.value ? "" : o.value;
+                    setChildrenCount(next);
+                    persist({ childrenCount: next });
+                  }}
+                >
+                  <span className="mr-1">{o.emoji}</span>
+                  {o.label}
+                </ChoiceButton>
+              ))}
+            </div>
+          </EditField>
+
+          <EditField label="Età pensionamento desiderata" icon={<Cake className="size-3" />}>
+            <div className="grid grid-cols-3 gap-1">
+              {RETIREMENT_AGE_OPTIONS.map((o) => (
+                <ChoiceButton
+                  key={o.value}
+                  selected={retirementAge === o.value}
+                  onClick={() => {
+                    const next = retirementAge === o.value ? "" : o.value;
+                    setRetirementAge(next);
+                    persist({ retirementAge: next });
+                  }}
+                >
+                  <span className="mr-1">{o.emoji}</span>
+                  {o.label}
+                </ChoiceButton>
+              ))}
+            </div>
+          </EditField>
+
+          <EditField label="Tolleranza rischio investimenti" icon={<Target className="size-3" />}>
+            <div className="grid grid-cols-3 gap-1">
+              {RISK_TOLERANCE_OPTIONS.map((o) => (
+                <ChoiceButton
+                  key={o.value}
+                  selected={riskTolerance === o.value}
+                  onClick={() => {
+                    const next = riskTolerance === o.value ? "" : o.value;
+                    setRiskTolerance(next);
+                    persist({ riskTolerance: next });
+                  }}
+                >
+                  <span className="mr-1">{o.emoji}</span>
+                  {o.label}
+                </ChoiceButton>
+              ))}
+            </div>
+          </EditField>
+
+          <EditField label="Tipo abitazione attuale" icon={<Globe className="size-3" />}>
+            <div className="grid grid-cols-2 gap-1">
+              {HOUSING_TYPE_OPTIONS.map((o) => (
+                <ChoiceButton
+                  key={o.value}
+                  selected={housingType === o.value}
+                  onClick={() => {
+                    const next = housingType === o.value ? "" : o.value;
+                    setHousingType(next);
+                    persist({ housingType: next });
+                  }}
+                >
+                  <span className="mr-1">{o.emoji}</span>
+                  {o.label}
                 </ChoiceButton>
               ))}
             </div>
