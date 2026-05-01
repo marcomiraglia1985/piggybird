@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import {
   Check,
   User as UserIcon,
@@ -13,6 +14,8 @@ import {
   Briefcase,
   History,
   Target,
+  Brain,
+  ChevronRight,
 } from "lucide-react";
 import { CountryPicker } from "@/components/ui/country-picker";
 import { flagFor } from "@/lib/countries";
@@ -401,6 +404,25 @@ export function ProfiloSection() {
           {error}
         </p>
       )}
+
+      <Link
+        href="/impostazioni/personality"
+        className="group flex items-center gap-3 rounded-lg p-3 mt-2 bg-gradient-to-br from-violet-500/[0.10] to-indigo-500/[0.04] border border-violet-500/30 hover:from-violet-500/[0.18] hover:to-indigo-500/[0.08] hover:border-violet-500/50 transition-colors"
+      >
+        <span className="size-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
+          <Brain className="size-4 text-violet-300" />
+        </span>
+        <div className="flex-1 min-w-0">
+          <div className="text-xs font-medium text-violet-200">
+            Take a personality test
+          </div>
+          <div className="text-[10px] text-[var(--fg-subtle)] mt-0.5 leading-snug">
+            Capisci che tipo di persona finanziaria sei. Personalizza la AI di
+            Piggybird sul tuo modo di pensare ai soldi.
+          </div>
+        </div>
+        <ChevronRight className="size-4 text-violet-400 group-hover:translate-x-0.5 transition-transform" />
+      </Link>
     </div>
   );
 }

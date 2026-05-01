@@ -51,6 +51,43 @@ export const GOAL_OPTIONS = [
   { value: "savings", label: "Obiettivi & risparmi", emoji: "🎯" },
 ] as const;
 
+export const MONTHLY_INCOME_OPTIONS = [
+  { value: "<2k", label: "< €2.000", emoji: "💶" },
+  { value: "2-3k", label: "€2.000 – €3.000", emoji: "💶" },
+  { value: "3-5k", label: "€3.000 – €5.000", emoji: "💶" },
+  { value: "5-8k", label: "€5.000 – €8.000", emoji: "💶" },
+  { value: "8-12k", label: "€8.000 – €12.000", emoji: "💶" },
+  { value: "12k+", label: "> €12.000", emoji: "💶" },
+] as const;
+
+export const CHILDREN_COUNT_OPTIONS = [
+  { value: "0", label: "Nessuno", emoji: "🚫" },
+  { value: "1", label: "1", emoji: "👶" },
+  { value: "2", label: "2", emoji: "👨‍👩‍👧" },
+  { value: "3+", label: "3 o più", emoji: "👨‍👩‍👧‍👦" },
+] as const;
+
+export const RETIREMENT_AGE_OPTIONS = [
+  { value: "50-55", label: "50 – 55", emoji: "🏝️" },
+  { value: "55-60", label: "55 – 60", emoji: "🏝️" },
+  { value: "60-65", label: "60 – 65", emoji: "🏖️" },
+  { value: "65-70", label: "65 – 70", emoji: "🏖️" },
+  { value: "no-fretta", label: "Nessuna fretta", emoji: "✨" },
+] as const;
+
+export const RISK_TOLERANCE_OPTIONS = [
+  { value: "conservative", label: "Conservativo", emoji: "🛡️" },
+  { value: "balanced", label: "Bilanciato", emoji: "⚖️" },
+  { value: "aggressive", label: "Aggressivo", emoji: "🚀" },
+] as const;
+
+export const HOUSING_TYPE_OPTIONS = [
+  { value: "own-no-mortgage", label: "Proprietà (senza mutuo)", emoji: "🔑" },
+  { value: "own-mortgage", label: "Proprietà (con mutuo)", emoji: "🏦" },
+  { value: "rent", label: "Affitto", emoji: "🏷️" },
+  { value: "family", label: "Famiglia / convivenza", emoji: "👨‍👩‍👧" },
+] as const;
+
 /**
  * Calcola l'età in anni compiuti da una data ISO "YYYY-MM-DD".
  * Ritorna null se la data è invalida o non impostata.

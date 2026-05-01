@@ -20,6 +20,11 @@ const PostSchema = z.object({
   profession: z.string().trim().max(20).optional(),
   trackingExperience: z.string().trim().max(20).optional(),
   goals: z.array(z.string().trim().min(1).max(20)).optional(),
+  monthlyIncome: z.string().trim().max(20).optional(),
+  childrenCount: z.string().trim().max(5).optional(),
+  retirementAge: z.string().trim().max(20).optional(),
+  riskTolerance: z.string().trim().max(20).optional(),
+  housingType: z.string().trim().max(30).optional(),
 });
 
 export async function GET() {

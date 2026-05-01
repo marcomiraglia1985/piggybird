@@ -16,6 +16,11 @@ const KEYS = {
   profession: "user.profession",
   trackingExperience: "user.trackingExperience",
   goals: "user.goals",
+  monthlyIncome: "user.monthlyIncome",
+  childrenCount: "user.childrenCount",
+  retirementAge: "user.retirementAge",
+  riskTolerance: "user.riskTolerance",
+  housingType: "user.housingType",
 } as const;
 
 const DEFAULT_PROFILE: UserProfile = {
@@ -27,6 +32,11 @@ const DEFAULT_PROFILE: UserProfile = {
   profession: "",
   trackingExperience: "",
   goals: [],
+  monthlyIncome: "",
+  childrenCount: "",
+  retirementAge: "",
+  riskTolerance: "",
+  housingType: "",
 };
 
 function parseJsonArray(raw: string | undefined): string[] {
@@ -57,6 +67,11 @@ export async function getUserProfile(): Promise<UserProfile> {
     profession: map.get(KEYS.profession) ?? DEFAULT_PROFILE.profession,
     trackingExperience: map.get(KEYS.trackingExperience) ?? DEFAULT_PROFILE.trackingExperience,
     goals: parseJsonArray(map.get(KEYS.goals)),
+    monthlyIncome: map.get(KEYS.monthlyIncome) ?? DEFAULT_PROFILE.monthlyIncome,
+    childrenCount: map.get(KEYS.childrenCount) ?? DEFAULT_PROFILE.childrenCount,
+    retirementAge: map.get(KEYS.retirementAge) ?? DEFAULT_PROFILE.retirementAge,
+    riskTolerance: map.get(KEYS.riskTolerance) ?? DEFAULT_PROFILE.riskTolerance,
+    housingType: map.get(KEYS.housingType) ?? DEFAULT_PROFILE.housingType,
   };
 }
 
@@ -70,6 +85,11 @@ export async function saveUserProfile(input: Partial<UserProfile>): Promise<void
   if (input.profession !== undefined) ops.push(upsertSetting(KEYS.profession, input.profession.trim()));
   if (input.trackingExperience !== undefined) ops.push(upsertSetting(KEYS.trackingExperience, input.trackingExperience.trim()));
   if (input.goals !== undefined) ops.push(upsertSetting(KEYS.goals, JSON.stringify(input.goals)));
+  if (input.monthlyIncome !== undefined) ops.push(upsertSetting(KEYS.monthlyIncome, input.monthlyIncome.trim()));
+  if (input.childrenCount !== undefined) ops.push(upsertSetting(KEYS.childrenCount, input.childrenCount.trim()));
+  if (input.retirementAge !== undefined) ops.push(upsertSetting(KEYS.retirementAge, input.retirementAge.trim()));
+  if (input.riskTolerance !== undefined) ops.push(upsertSetting(KEYS.riskTolerance, input.riskTolerance.trim()));
+  if (input.housingType !== undefined) ops.push(upsertSetting(KEYS.housingType, input.housingType.trim()));
   await Promise.all(ops);
 }
 
