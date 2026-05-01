@@ -73,7 +73,7 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
           type="button"
           onClick={() => setOpen(true)}
           title={`Aggiornamento disponibile: v${info?.latest}`}
-          className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-full bg-emerald-500/15 border border-emerald-400/40 text-[10px] font-semibold tracking-normal text-emerald-200 hover:bg-emerald-500/25 hover:border-emerald-400/60 transition-colors shadow-[0_0_12px_rgba(16,185,129,0.25)] animate-[pulse_2s_ease-in-out_infinite]"
+          className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-600 text-white text-[10px] font-semibold tracking-normal hover:bg-emerald-700 transition-colors shadow-md shadow-emerald-500/40 animate-[pulse_2.5s_ease-in-out_infinite]"
         >
           <Sparkles className="size-3" />
           <span>Nuova v{info?.latest} disponibile</span>
