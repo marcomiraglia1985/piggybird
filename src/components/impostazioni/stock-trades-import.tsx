@@ -164,34 +164,6 @@ export function StockTradesImport() {
           </div>
         )}
 
-        {stats.length > 0 && (
-          <div className="mt-4 space-y-1.5">
-            <p className="text-[11px] uppercase tracking-wider text-[var(--fg-subtle)]">
-              Eventi importati per broker
-            </p>
-            {stats.map((s) => (
-              <div
-                key={s.platform}
-                className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-2)]/40 px-3 py-1.5 text-xs"
-              >
-                <span>
-                  <strong>{s.platform}</strong>{" "}
-                  <span className="text-[var(--fg-subtle)] tabular-nums">
-                    · {s.count} eventi
-                  </span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => deletePlatform(s.platform)}
-                  className="size-7 inline-flex items-center justify-center rounded text-[var(--fg-muted)] hover:text-rose-400 hover:bg-rose-500/10"
-                  title={`Cancella tutti i trade ${s.platform}`}
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
       </CardContent>
     </div>
   );

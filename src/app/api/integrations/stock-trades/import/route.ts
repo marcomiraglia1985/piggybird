@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import {
-  parseAnyBroker,
   hashStockEvent,
   listSupportedBrokers,
 } from "@/lib/broker-parsers";
+import { parseAnyBrokerWithFallback } from "@/lib/universal-broker-parser";
 
 export const runtime = "nodejs";
 
@@ -52,7 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "CSV vuoto" }, { status: 400 });
   }
 
-  const parsed = parseAnyBroker(csvContent);
+  const parsed = await parseAnyBrokerWithFallback(csvContent);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }

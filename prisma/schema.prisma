@@ -337,7 +337,10 @@ model InvestmentsHistoryCache {
 model ParserTemplate {
   /** sha256 dei primi N header (lowercase, sorted) */
   signature   String   @id
-  /** Nome banca inferito dall'AI (es. "N26", "Deutsche Bank") — solo display */
+  /** "bank" (default) per CSV banche → ParsedRow, "broker" per CSV broker
+   *  → StockEvent. Determina lo schema atteso del mapping JSON. */
+  kind        String   @default("bank")
+  /** Nome banca/broker inferito dall'AI (es. "N26", "eToro") — solo display */
   bankName    String?
   /** Mapping JSON: { dateCol: 0, amountCol: 3, descCol: 5, skipRows: 0,
    *  amountSign: "signed" | "split", entrateCol?: ..., usciteCol?: ...,
