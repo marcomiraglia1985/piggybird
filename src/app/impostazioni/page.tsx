@@ -22,13 +22,16 @@ export default async function ImpostazioniPage() {
         </p>
       </header>
 
-      <Section title="Profilo">
-        <ProfiloSection />
-      </Section>
-
-      <Section title="Preferenze">
-        <PreferenzeSection />
-      </Section>
+      {/* Profilo + Preferenze affiancati su large viewport (≥md), stacked
+          su mobile. Entrambi i box hanno max-w-md → si allineano bene. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+        <Section title="Profilo">
+          <ProfiloSection />
+        </Section>
+        <Section title="Preferenze">
+          <PreferenzeSection />
+        </Section>
+      </div>
 
       <Section title="Integrazioni">
         <BinanceConnect />
