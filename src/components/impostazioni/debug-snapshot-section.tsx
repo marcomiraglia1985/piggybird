@@ -103,7 +103,7 @@ export function DebugSnapshotSection() {
 
               {!result ? (
                 <>
-                  <div className="text-[11px] text-amber-200 bg-amber-500/10 border border-amber-500/30 rounded-lg p-2.5 leading-relaxed inline-flex items-start gap-2">
+                  <div className="text-[11px] text-amber-700 dark:text-amber-200 bg-amber-500/15 border border-amber-500/40 rounded-lg p-2.5 leading-relaxed inline-flex items-start gap-2">
                     <AlertTriangle className="size-3.5 shrink-0 mt-0.5" />
                     <div>
                       <strong>Cosa viene inviato:</strong> una copia compressa del tuo
