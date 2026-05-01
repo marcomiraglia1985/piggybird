@@ -32,6 +32,12 @@ export default async function ImpostazioniPage() {
         </Section>
       </div>
 
+      <Section title="AI Features">
+        <div className="surface p-5">
+          <AiFeaturesSection />
+        </div>
+      </Section>
+
       <Section title="Integrazioni">
         <div className="surface p-5 divide-y divide-[var(--border)]/50 space-y-0">
           <div className="pb-5">
@@ -40,11 +46,8 @@ export default async function ImpostazioniPage() {
           <div className="py-5">
             <RevolutXConnect />
           </div>
-          <div className="py-5">
-            <StockTradesImport />
-          </div>
           <div className="pt-5">
-            <AiFeaturesSection />
+            <StockTradesImport />
           </div>
         </div>
       </Section>
