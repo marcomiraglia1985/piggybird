@@ -13,6 +13,8 @@ static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
 /// Handle del Node sidecar (server.js Next.js standalone). Salvato in static
 /// così possiamo killarlo quando l'app esce — altrimenti resta orphan.
 static SIDECAR_CHILD: OnceLock<Mutex<Option<CommandChild>>> = OnceLock::new();
+/// PID del sidecar (atomico per accesso lock-free dall'exit handler). 0 = no PID.
+static SIDECAR_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 fn log_line(line: &str) {
     if let Some(p) = LOG_PATH.get() {
@@ -110,18 +112,45 @@ pub fn run() {
         .expect("error while building tauri application")
         .run(|_app_handle, event| {
             if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
-                if let Some(mutex) = SIDECAR_CHILD.get() {
-                    if let Ok(mut guard) = mutex.lock() {
-                        if let Some(child) = guard.take() {
-                            match child.kill() {
-                                Ok(_) => log_line("[exit] sidecar Node killed cleanly"),
-                                Err(e) => log_line(&format!("[exit] sidecar kill error: {}", e)),
-                            }
-                        }
-                    }
-                }
+                kill_sidecar_now();
             }
         });
+}
+
+/// Kill the sidecar Node process via 3 strategie in cascata:
+/// 1. CommandChild::kill() (clean SIGTERM)
+/// 2. kill -9 <pid> (SIGKILL diretto via system command)
+/// 3. lsof + kill su SIDECAR_PORT (defense in depth — risolve anche se PID
+///    è cambiato per qualche fork)
+fn kill_sidecar_now() {
+    use std::process::Command;
+    // Strategia 1: CommandChild handle
+    if let Some(mutex) = SIDECAR_CHILD.get() {
+        if let Ok(mut guard) = mutex.lock() {
+            if let Some(child) = guard.take() {
+                match child.kill() {
+                    Ok(_) => log_line("[exit] sidecar CommandChild.kill() OK"),
+                    Err(e) => log_line(&format!("[exit] CommandChild.kill() err: {}", e)),
+                }
+            }
+        }
+    }
+    // Strategia 2: kill -9 via system command (più diretto)
+    let pid = SIDECAR_PID.load(std::sync::atomic::Ordering::SeqCst);
+    if pid > 0 {
+        let res = Command::new("kill").args(["-9", &pid.to_string()]).output();
+        match res {
+            Ok(o) if o.status.success() => log_line(&format!("[exit] kill -9 pid={} OK", pid)),
+            Ok(o) => log_line(&format!(
+                "[exit] kill -9 pid={} fail: {}",
+                pid,
+                String::from_utf8_lossy(&o.stderr)
+            )),
+            Err(e) => log_line(&format!("[exit] kill -9 pid={} err: {}", pid, e)),
+        }
+    }
+    // Strategia 3: chiunque ascolti sulla porta del sidecar
+    kill_zombie_on_port(SIDECAR_PORT);
 }
 
 fn wait_and_navigate(app: AppHandle) {
@@ -165,6 +194,30 @@ fn wait_and_navigate(app: AppHandle) {
     log_line("[wait-and-nav] TIMEOUT 30s — sidecar non risponde");
 }
 
+/// Cleanup zombie: se una precedente istanza ha lasciato un Node sidecar
+/// orphan sulla SIDECAR_PORT, killiamolo prima di spawnare il nuovo. Defense
+/// in depth: anche se l'exit handler di RunEvent fallisce o se l'app è
+/// stata force-quit, al boot successivo il port viene liberato.
+fn kill_zombie_on_port(port: u16) {
+    use std::process::Command;
+    let lsof = Command::new("lsof")
+        .args(["-ti", &format!(":{}", port)])
+        .output();
+    let Ok(out) = lsof else {
+        log_line(&format!("[zombie-kill] lsof not available, skip"));
+        return;
+    };
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for pid_str in stdout.lines() {
+        let Ok(pid) = pid_str.trim().parse::<i32>() else { continue };
+        let res = Command::new("kill").args(["-9", &pid.to_string()]).output();
+        match res {
+            Ok(_) => log_line(&format!("[zombie-kill] killed pid {} on port {}", pid, port)),
+            Err(e) => log_line(&format!("[zombie-kill] failed pid {}: {}", pid, e)),
+        }
+    }
+}
+
 async fn bootstrap_and_serve(
     app: AppHandle,
     server_js: PathBuf,
@@ -173,6 +226,9 @@ async fn bootstrap_and_serve(
     database_url: String,
 ) -> Result<(), String> {
     let shell = app.shell();
+
+    // Cleanup zombie sidecar di precedenti istanze prima di spawnare il nuovo
+    kill_zombie_on_port(SIDECAR_PORT);
 
     // Step 1: init-db.js — script bundlato che apply lo schema SQL via
     // better-sqlite3 SOLO se la tabella Setting non esiste (idempotente).
@@ -226,7 +282,10 @@ async fn bootstrap_and_serve(
     let (mut rx, child) = server_cmd
         .spawn()
         .map_err(|e| format!("sidecar spawn failed: {}", e))?;
-    // Salva il handle in static così l'exit handler può killarlo
+    // Salva PID atomico per kill diretto + handle CommandChild come fallback
+    let pid = child.pid();
+    SIDECAR_PID.store(pid, std::sync::atomic::Ordering::SeqCst);
+    log_line(&format!("[spawn] sidecar pid={}", pid));
     let mutex = SIDECAR_CHILD.get_or_init(|| Mutex::new(None));
     if let Ok(mut guard) = mutex.lock() {
         *guard = Some(child);
