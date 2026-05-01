@@ -143,22 +143,35 @@ export function CategoryPicker({
         const margin = 8;
         const popoverW = Math.max(288, rect.width);
         const popoverMaxH = 480; // matches max-h del dropdown sotto
-        // Auto-flip: se sotto il trigger non c'è abbastanza spazio, ancoriamo
-        // sopra (bottom-up). Riserviamo `popoverMaxH + margin` come threshold.
         const spaceBelow = window.innerHeight - rect.bottom - margin;
         const spaceAbove = rect.top - margin;
+        // Auto-flip: se sotto il trigger non c'è abbastanza spazio, ancoriamo
+        // il BOTTOM del popover al top del trigger (così cresce verso l'alto
+        // adattandosi all'altezza reale, niente gap).
         const flipUp = spaceBelow < popoverMaxH && spaceAbove > spaceBelow;
-        const top = flipUp
-          ? Math.max(margin, rect.top - 4 - Math.min(popoverMaxH, spaceAbove))
-          : rect.bottom + 4;
         const wantedLeft = rect.left;
         const maxLeft = window.innerWidth - popoverW - margin;
         const left = Math.max(margin, Math.min(wantedLeft, maxLeft));
-        // maxHeight: lo spazio effettivamente disponibile nel verso scelto
         const maxHeight = flipUp
           ? Math.min(popoverMaxH, spaceAbove)
           : Math.min(popoverMaxH, spaceBelow);
-        return { position: "fixed", top, left, width: popoverW, maxHeight };
+        if (flipUp) {
+          // bottom-anchored: il popover sale dal punto (rect.top - 4) verso l'alto
+          return {
+            position: "fixed",
+            bottom: window.innerHeight - rect.top + 4,
+            left,
+            width: popoverW,
+            maxHeight,
+          };
+        }
+        return {
+          position: "fixed",
+          top: rect.bottom + 4,
+          left,
+          width: popoverW,
+          maxHeight,
+        };
       })()
     : undefined;
 
