@@ -13,6 +13,8 @@ const PatchSchema = z.object({
   ownershipShare: z.number().min(0).max(1).optional(),
   interestRateAnnual: z.number().nonnegative().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
+  /** Per friendsplit: lista membri del gruppo. Salvata come JSON in membersJson. */
+  members: z.array(z.object({ name: z.string().trim().min(1) })).optional(),
   /** Se true, salta la creazione del movimento di rettifica
    *  (usato dall'importer iniziale che setta i saldi senza tracking). */
   skipAdjustment: z.boolean().optional(),
@@ -31,7 +33,7 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     return NextResponse.json({ error: "Conto non trovato" }, { status: 404 });
   }
 
-  const { skipAdjustment, ...updates } = parsed.data;
+  const { skipAdjustment, members, ...updates } = parsed.data;
 
   // Cambio quota di proprietà: snapshot della vecchia quota su tutte le tx
   // esistenti PRIMA di scrivere la nuova quota sull'account. In questo modo
@@ -116,9 +118,14 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     adjustmentTx = { id: tx.id, amount: tx.amount };
   }
 
+  // members → membersJson (campo DB) per i conti friendsplit
+  const membersJsonUpdate =
+    members !== undefined
+      ? { membersJson: JSON.stringify(members.map((m) => ({ name: m.name.trim() }))) }
+      : {};
   const updated = await prisma.account.update({
     where: { id },
-    data: { ...updates, ...closedAtUpdate },
+    data: { ...updates, ...closedAtUpdate, ...membersJsonUpdate },
   });
 
   // Snapshot del saldo

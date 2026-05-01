@@ -151,7 +151,7 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
               {String(now!.getUTCHours()).padStart(2, "0")}:
               {String(now!.getUTCMinutes()).padStart(2, "0")}
             </p>
-            <div className="relative rounded-lg overflow-hidden bg-gradient-to-b from-[#1e3a8a] via-[#3b82f6] to-[#1e3a8a]">
+            <div className="relative rounded-lg overflow-hidden bg-[var(--surface-2)]">
               <svg
                 viewBox="-180 -90 360 180"
                 preserveAspectRatio="none"
@@ -159,14 +159,10 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
               >
                 <defs>
                   <radialGradient id="sunGlow" cx="50%" cy="50%" r="50%">
-                    <stop offset="0%" stopColor="#fde68a" stopOpacity="0.7" />
-                    <stop offset="100%" stopColor="#fde68a" stopOpacity="0" />
+                    {/* Sun glow in violet, sottile */}
+                    <stop offset="0%" stopColor="#a78bfa" stopOpacity="0.18" />
+                    <stop offset="100%" stopColor="#a78bfa" stopOpacity="0" />
                   </radialGradient>
-                  <linearGradient id="dayGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#93c5fd" stopOpacity="0.95" />
-                    <stop offset="50%" stopColor="#fef3c7" stopOpacity="0.75" />
-                    <stop offset="100%" stopColor="#93c5fd" stopOpacity="0.95" />
-                  </linearGradient>
                   <filter
                     id="terminatorBlur"
                     x="-10%"
@@ -174,13 +170,11 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
                     width="120%"
                     height="120%"
                   >
-                    <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" />
+                    <feGaussianBlur in="SourceGraphic" stdDeviation="2" />
                   </filter>
                 </defs>
 
-                <rect x="-180" y="-90" width="360" height="180" fill="url(#dayGradient)" />
-
-                {/* Sun glow espanso del 30% (rx 60→78, ry 35→46) */}
+                {/* Sun glow leggera, accenta il sub-solar point */}
                 <ellipse
                   cx={data.lambdaS}
                   cy={data.sunY}
@@ -192,15 +186,16 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
                 {landPath && (
                   <path
                     d={landPath}
-                    fill="rgba(34, 84, 61, 0.55)"
-                    stroke="rgba(255,255,255,0.20)"
-                    strokeWidth="0.3"
+                    fill="none"
+                    stroke="rgba(139, 92, 246, 0.45)"
+                    strokeWidth="0.35"
                   />
                 )}
 
+                {/* Night overlay: scuro ma sottile, evidenzia solo il lato notte */}
                 <path
                   d={data.nightPath}
-                  fill="rgba(8, 15, 35, 0.82)"
+                  fill="rgba(0, 0, 0, 0.35)"
                   filter="url(#terminatorBlur)"
                 />
 
@@ -209,9 +204,8 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
                   y1="0"
                   x2="180"
                   y2="0"
-                  stroke="white"
-                  strokeOpacity="0.10"
-                  strokeWidth="0.3"
+                  stroke="rgba(139, 92, 246, 0.20)"
+                  strokeWidth="0.25"
                 />
                 {[23.5, -23.5].map((lat) => (
                   <line
@@ -220,9 +214,8 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
                     y1={-lat}
                     x2="180"
                     y2={-lat}
-                    stroke="white"
-                    strokeOpacity="0.06"
-                    strokeWidth="0.3"
+                    stroke="rgba(139, 92, 246, 0.10)"
+                    strokeWidth="0.25"
                     strokeDasharray="2 2"
                   />
                 ))}
@@ -233,9 +226,8 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
                     y1="-90"
                     x2={lng}
                     y2="90"
-                    stroke="white"
-                    strokeOpacity="0.05"
-                    strokeWidth="0.3"
+                    stroke="rgba(139, 92, 246, 0.08)"
+                    strokeWidth="0.25"
                   />
                 ))}
 
