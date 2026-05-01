@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -10,9 +10,14 @@ import { useWidgetSettings } from "@/lib/widget-settings";
 import {
   ALL_EXCHANGES,
   DEFAULT_FAVORITE_EXCHANGES,
+  getLocalTime,
   isMarketOpen,
 } from "@/lib/exchanges";
 import { ExchangeFavoritesSelector } from "./world-clocks-widget";
+
+/** Threshold in px sotto il quale il widget passa a compact-list mode
+ *  invece della mappa (la mappa <500px è poco leggibile). */
+const COMPACT_WIDTH = 500;
 
 const DEG = Math.PI / 180;
 
@@ -71,10 +76,25 @@ type Props = {
 export function WorldDayNightWidget({ landPath = null }: Props = {}) {
   const [opts, setOpts, reset] = useWidgetSettings("market-favorites", DEFAULTS);
   const [now, setNow] = useState<Date | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Compact mode quando il widget è narrow (1-col layout): mostra lista
+  // borse + orario locale + stato invece della mappa (illeggibile <500px).
+  const [compact, setCompact] = useState(false);
+
   useEffect(() => {
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 60_000);
     return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      setCompact(w > 0 && w < COMPACT_WIDTH);
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
   }, []);
 
   const visibleExchanges = useMemo(
@@ -100,12 +120,13 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
   }
 
   return (
+    <div ref={containerRef}>
     <Card className="p-6">
       <CardHeader className="mb-4">
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Sun className="size-4 text-amber-400" />
-            Live Markets World Map
+            {compact ? "Live Markets" : "Live Markets World Map"}
           </span>
         </CardTitle>
         <div className="flex items-center gap-1">
@@ -142,6 +163,49 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
       <CardContent>
         {!data ? (
           <div className="aspect-[2/1] rounded-lg bg-[var(--surface-2)] animate-pulse" />
+        ) : compact ? (
+          // === COMPACT MODE: lista borse con orario locale + pallino ===
+          <div className="space-y-2">
+            <p className="text-[11px] text-[var(--fg-subtle)] tabular-nums">
+              {data.openCount} {data.openCount === 1 ? "borsa aperta" : "borse aperte"}
+              {" · "}
+              UTC{" "}
+              {String(now!.getUTCHours()).padStart(2, "0")}:
+              {String(now!.getUTCMinutes()).padStart(2, "0")}
+            </p>
+            <div className="divide-y divide-[var(--border)]/50">
+              {visibleExchanges.map((ex) => {
+                const t = getLocalTime(ex.timezone, now!);
+                const open = isMarketOpen(now!, ex);
+                return (
+                  <div
+                    key={ex.id}
+                    className="flex items-center gap-3 py-2 text-sm"
+                  >
+                    <span className="text-base shrink-0">{ex.flag}</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium truncate">{ex.id}</div>
+                      <div className="text-[11px] text-[var(--fg-subtle)] truncate">
+                        {ex.city}
+                      </div>
+                    </div>
+                    <span className="text-xs tabular-nums text-[var(--fg-muted)] shrink-0">
+                      {String(t.hour).padStart(2, "0")}:{String(t.minute).padStart(2, "0")}
+                    </span>
+                    <span
+                      className={cn(
+                        "size-2 rounded-full shrink-0",
+                        open
+                          ? "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.6)]"
+                          : "bg-rose-400/70",
+                      )}
+                      title={open ? "Aperta" : "Chiusa"}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         ) : (
           <>
             <p className="text-[11px] text-[var(--fg-subtle)] tabular-nums mb-2">
@@ -304,5 +368,6 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
         )}
       </CardContent>
     </Card>
+    </div>
   );
 }
