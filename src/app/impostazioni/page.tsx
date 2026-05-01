@@ -28,9 +28,14 @@ export default async function ImpostazioniPage() {
         <Section title="Preferenze">
           <PreferenzeSection />
         </Section>
-        <Section title="Profilo">
-          <ProfiloSection />
-        </Section>
+        <div className="space-y-8">
+          <Section title="Profilo">
+            <ProfiloSection />
+          </Section>
+          <Section title="Snapshot di debug">
+            <DebugSnapshotSection />
+          </Section>
+        </div>
       </div>
 
       <Section title="Integrazioni">
@@ -52,7 +57,6 @@ export default async function ImpostazioniPage() {
 
       <Section title="Sistema">
         <SistemaSection version={pkg.version} />
-        <DebugSnapshotSection />
       </Section>
 
       <Section title="Dati">
