@@ -83,7 +83,7 @@ export function StockTradesImport() {
   }
 
   return (
-    <Card>
+    <div className="space-y-2">
       <CardHeader>
         <CardTitle>
           <span className="inline-flex items-center gap-2">
@@ -193,6 +193,6 @@ export function StockTradesImport() {
           </div>
         )}
       </CardContent>
-    </Card>
+    </div>
   );
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CheckCircle2, AlertTriangle, Trash2, Lock, ExternalLink, RefreshCw } from "lucide-react";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
+import { CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { cn, formatEUR } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 
@@ -132,7 +132,7 @@ export function BinanceConnect() {
   }
 
   return (
-    <Card>
+    <div className="space-y-2">
       <CardHeader>
         <CardTitle>
           <span className="inline-flex items-center gap-2">
@@ -344,6 +344,6 @@ export function BinanceConnect() {
           </div>
         )}
       </CardContent>
-    </Card>
+    </div>
   );
 }

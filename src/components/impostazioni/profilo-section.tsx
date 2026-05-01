@@ -113,7 +113,7 @@ export function ProfiloSection() {
   const goalLabels = GOAL_OPTIONS.filter((g) => goals.includes(g.value));
 
   return (
-    <div className="surface p-4 space-y-3 max-w-md">
+    <div className="surface p-5 space-y-3">
       <div className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium inline-flex items-center gap-1.5">
           <UserIcon className="size-3.5 text-violet-400" />
