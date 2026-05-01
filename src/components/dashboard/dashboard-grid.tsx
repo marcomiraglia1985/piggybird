@@ -24,6 +24,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Columns2, Columns3, Square, X, Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MasonryGrid } from "./masonry-grid";
 
 const PLACEMENT_KEY = "fp-dashboard-placement-v2";
 const COLS_KEY = "fp-dashboard-cols";
@@ -416,16 +417,16 @@ export function DashboardGrid({
   const staticView = (() => {
     const hasWide = visibleP.wide.length > 0;
     const hasCols = visibleP.cols.some((col) => col.length > 0);
-    // Unifichiamo wide + cols in UNA singola grid con auto-flow dense:
-    // CSS riempie automaticamente i gap orizzontali (es. dopo un widget
-    // wide=2, un widget narrow alla sua destra "sale" nello slot libero).
-    // Ordine logico: prima i wide, poi le cols flatten row-by-row
-    // (col0[0], col1[0], col2[0], col0[1], col1[1], ...).
-    const flatItems: { id: string; span: number }[] = [];
+    // True masonry: i widget narrow "salgono" a riempire lo spazio vuoto
+    // SOPRA di loro (impossibile con CSS grid puro cross-browser).
+    // Implementato in JS via <MasonryGrid>: misura altezze + position absolute
+    // + ResizeObserver per re-layout quando contenuto cambia.
+    // Ordine items: prima wide, poi cols flatten row-by-row.
+    const masonryItems: { id: string; span: number; node: React.ReactNode }[] = [];
     for (const id of visibleP.wide) {
       const card = cardMap.get(id);
       if (!card) continue;
-      flatItems.push({ id, span: getCardSpan(card) });
+      masonryItems.push({ id, span: getCardSpan(card), node: card.node });
     }
     const maxColLen = Math.max(0, ...visibleP.cols.map((c) => c.length));
     for (let row = 0; row < maxColLen; row++) {
@@ -434,29 +435,13 @@ export function DashboardGrid({
         if (!id) continue;
         const card = cardMap.get(id);
         if (!card) continue;
-        flatItems.push({ id, span: getCardSpan(card) });
+        masonryItems.push({ id, span: getCardSpan(card), node: card.node });
       }
     }
     return (
       <div className="space-y-6">
         {(hasWide || hasCols) && (
-          <div
-            className="grid gap-6 items-start"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gridAutoFlow: "row dense",
-            }}
-          >
-            {flatItems.map(({ id, span }) => {
-              const card = cardMap.get(id);
-              if (!card) return null;
-              return (
-                <div key={id} style={{ gridColumn: `span ${span}` }}>
-                  {card.node}
-                </div>
-              );
-            })}
-          </div>
+          <MasonryGrid items={masonryItems} cols={cols} gap={24} />
         )}
       </div>
     );
