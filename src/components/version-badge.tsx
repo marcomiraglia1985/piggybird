@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, ExternalLink, Sparkles, X } from "lucide-react";
 
@@ -12,6 +13,11 @@ import { Download, ExternalLink, Sparkles, X } from "lucide-react";
  *
  * Polling: fetcha /api/check-update on mount + ogni 6h (evita request
  * eccessive ma resta abbastanza fresco).
+ *
+ * Modale via React Portal a document.body: la sidebar ha `backdrop-blur-xl`
+ * che crea un containing block per `position: fixed`, quindi senza il portal
+ * il modale verrebbe clippato dentro la sidebar (w-60) invece di riempire
+ * il viewport.
  */
 
 type CheckUpdateResponse = {
@@ -32,6 +38,8 @@ type CheckUpdateResponse = {
 const POLL_MS = 6 * 60 * 60 * 1000;
 
 export function VersionBadge({ currentVersion }: { currentVersion: string }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
   const [info, setInfo] = useState<CheckUpdateResponse | null>(null);
   const [open, setOpen] = useState(false);
 
@@ -83,6 +91,7 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
         )}
       </button>
 
+      {mounted && createPortal(
       <AnimatePresence>
         {open && info && info.updateAvailable && (
           <motion.div
@@ -183,7 +192,9 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
             </motion.div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </>
   );
 }
