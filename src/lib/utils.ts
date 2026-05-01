@@ -59,3 +59,14 @@ export function formatMonth(date: Date | string) {
   const d = typeof date === "string" ? new Date(date) : date;
   return new Intl.DateTimeFormat("it-IT", { month: "long", year: "numeric" }).format(d);
 }
+
+/**
+ * Format compatto per tick di chart: "ott 24" invece di "ottobre 2024".
+ * Mese abbreviato (3 char) + anno 2-digit, lowercase italiano.
+ */
+export function formatMonthShort(date: Date | string) {
+  const d = typeof date === "string" ? new Date(date) : date;
+  return new Intl.DateTimeFormat("it-IT", { month: "short", year: "2-digit" })
+    .format(d)
+    .replace(/\.$/, ""); // rimuovi punto trailing (es. "ott. 24" → "ott 24")
+}

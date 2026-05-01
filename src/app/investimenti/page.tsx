@@ -6,9 +6,13 @@ import { TrendingUp } from "lucide-react";
 import { SyncAllButton } from "@/components/investimenti/sync-all-button";
 import { StockTradesImportDialog } from "@/components/investimenti/stock-trades-import-dialog";
 import { ensureDefaultInvestmentCategories } from "@/lib/seed-defaults";
-import { getInvestmentsHistoryV2, hasInvestmentData } from "@/lib/investments-history";
+import { hasInvestmentData } from "@/lib/investments-history";
+import { Suspense } from "react";
+import {
+  InvestmentsChartAsync,
+  InvestmentsChartSkeleton,
+} from "./_chart-async";
 import { getCredentialStatus } from "@/lib/credentials";
-import { InvestmentsChart } from "@/components/charts/investments-chart";
 
 export const dynamic = "force-dynamic";
 
@@ -23,8 +27,10 @@ export default async function InvestimentiPage() {
   // Prima visita: seed delle categorie investimento di default se mancano
   await ensureDefaultInvestmentCategories();
 
-  const [history, dataState, binanceCred, revolutXCred] = await Promise.all([
-    getInvestmentsHistoryV2(),
+  // history rimossa dal Promise.all: era la slow op (5-10s di fetch live
+  // Yahoo + Binance). Spostata in <Suspense> sotto così il resto della
+  // pagina appare subito.
+  const [dataState, binanceCred, revolutXCred] = await Promise.all([
     hasInvestmentData(),
     getCredentialStatus("binance"),
     getCredentialStatus("revolut-x"),
@@ -181,12 +187,13 @@ export default async function InvestimentiPage() {
         </div>
       </div>
 
-      <InvestmentsChart
-        data={history}
-        hasStocks={dataState.hasStocks}
-        hasCrypto={dataState.hasCrypto}
-        binanceConnected={!!binanceCred}
-      />
+      <Suspense fallback={<InvestmentsChartSkeleton />}>
+        <InvestmentsChartAsync
+          hasStocks={dataState.hasStocks}
+          hasCrypto={dataState.hasCrypto}
+          binanceConnected={!!binanceCred}
+        />
+      </Suspense>
 
       <div>
         <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)] mb-3 px-1">
