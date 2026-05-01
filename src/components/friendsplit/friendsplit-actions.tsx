@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Plus, Trash2, AlertTriangle, Handshake } from "lucide-react";
+import { X, Plus, Trash2, AlertTriangle, Handshake, Pencil } from "lucide-react";
 import { useToast } from "@/components/ui/toast";
 import { formatEUR, cn } from "@/lib/utils";
 
@@ -438,6 +438,254 @@ export function DeleteFriendsplitButton({
                     {busy ? "Elimino…" : "Elimina definitivamente"}
                   </button>
                 )}
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </>
+  );
+}
+
+/* ============================================================================
+ * "Modifica friendsplit" button + dialog
+ *
+ * Riusa lo stesso form di NewFriendsplitButton ma pre-popolato. Submit fa
+ * PATCH /api/accounts/[id] (members + name + emoji).
+ *
+ * Lock: il selfName (utente loggato) NON è modificabile come membro né
+ * rimuovibile. Per rinominare se stessi → Impostazioni → Profilo.
+ * ============================================================================ */
+export function EditFriendsplitButton({
+  account,
+}: {
+  account: {
+    id: string;
+    name: string;
+    emoji: string | null;
+    members: { name: string }[];
+  };
+}) {
+  const router = useRouter();
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [selfName, setSelfName] = useState("");
+  // Strip "Friendsplit " prefix per UI (lo riapplicheremo on save)
+  const initialName = account.name.replace(/^Friendsplit\s+/, "");
+  const [name, setName] = useState(initialName);
+  const [emoji, setEmoji] = useState(account.emoji ?? "🤝");
+  const [members, setMembers] = useState<string[]>(
+    account.members.map((m) => m.name),
+  );
+  const [memberDraft, setMemberDraft] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => setSelfName(d.settings?.["user.name"] ?? ""))
+      .catch(() => {});
+  }, [open]);
+
+  function addMember() {
+    const v = memberDraft.trim();
+    if (!v || members.includes(v)) return;
+    setMembers([...members, v]);
+    setMemberDraft("");
+  }
+  function removeMember(n: string) {
+    if (n === selfName) return;
+    setMembers(members.filter((m) => m !== n));
+  }
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      if (!name.trim()) throw new Error("Inserisci il nome del gruppo");
+      if (members.length < 2) throw new Error("Servono almeno 2 membri");
+      const fullName = name.trim().startsWith("Friendsplit ")
+        ? name.trim()
+        : `Friendsplit ${name.trim()}`;
+      const res = await fetch(`/api/accounts/${account.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          name: fullName,
+          emoji,
+          members: members.map((m) => ({ name: m })),
+        }),
+      });
+      const j = await res.json();
+      if (!res.ok) throw new Error(j.error ?? "Errore aggiornamento");
+      toast({
+        title: "Friendsplit aggiornato",
+        description: fullName,
+        variant: "success",
+      });
+      setOpen(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          setOpen(true);
+        }}
+        title="Modifica friendsplit"
+        className="size-7 inline-flex items-center justify-center rounded-md text-[var(--fg-subtle)] hover:text-violet-300 hover:bg-violet-500/10 transition-colors"
+      >
+        <Pencil className="size-3.5" />
+      </button>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/50 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => !saving && setOpen(false)}
+          >
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md surface p-6 space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold inline-flex items-center gap-2">
+                  <Pencil className="size-5 text-violet-400" />
+                  Modifica friendsplit
+                </h2>
+                <button
+                  onClick={() => setOpen(false)}
+                  disabled={saving}
+                  className="size-8 inline-flex items-center justify-center rounded-lg hover:bg-[var(--surface-2)]"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+
+              <div className="grid grid-cols-[80px_1fr] gap-3">
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+                    Emoji
+                  </label>
+                  <input
+                    type="text"
+                    value={emoji}
+                    onChange={(e) => setEmoji(e.target.value)}
+                    maxLength={4}
+                    className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-lg text-center focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+                    Nome gruppo
+                  </label>
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+                  Membri ({members.length})
+                </label>
+                <div className="flex flex-wrap gap-1.5">
+                  {members.map((m) => {
+                    const isSelf = m === selfName;
+                    return (
+                      <span
+                        key={m}
+                        className={cn(
+                          "inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-xs border",
+                          isSelf
+                            ? "bg-violet-500/15 border-violet-500/40 text-violet-200"
+                            : "bg-[var(--surface-2)] border-[var(--border)]",
+                        )}
+                      >
+                        {m}
+                        {isSelf && <span className="text-[10px]">(io)</span>}
+                        {!isSelf && (
+                          <button
+                            type="button"
+                            onClick={() => removeMember(m)}
+                            className="hover:text-rose-300"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={memberDraft}
+                    onChange={(e) => setMemberDraft(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addMember();
+                      }
+                    }}
+                    placeholder="Aggiungi membro…"
+                    className="flex-1 h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
+                  />
+                  <button
+                    type="button"
+                    onClick={addMember}
+                    disabled={!memberDraft.trim()}
+                    className="h-9 px-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm hover:border-[var(--border-strong)] disabled:opacity-50"
+                  >
+                    Aggiungi
+                  </button>
+                </div>
+                <p className="text-[11px] text-[var(--fg-subtle)]">
+                  ⚠️ Rimuovere un membro non cancella le tx storiche dove
+                  appariva. Le quote restano calcolate sul gruppo originale.
+                </p>
+              </div>
+
+              {error && (
+                <div className="text-sm text-rose-400 inline-flex items-center gap-1.5">
+                  <AlertTriangle className="size-4" /> {error}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 justify-end pt-2">
+                <button
+                  onClick={() => setOpen(false)}
+                  disabled={saving}
+                  className="h-9 px-4 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm"
+                >
+                  Annulla
+                </button>
+                <button
+                  onClick={save}
+                  disabled={saving || !name.trim() || members.length < 2}
+                  className="h-9 px-4 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-sm font-medium disabled:opacity-50"
+                >
+                  {saving ? "Salvo…" : "Salva modifiche"}
+                </button>
               </div>
             </motion.div>
           </motion.div>

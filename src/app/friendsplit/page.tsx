@@ -7,6 +7,7 @@ import { getSelfName, parseMembers, type FriendsplitMember } from "@/lib/friends
 import {
   NewFriendsplitButton,
   DeleteFriendsplitButton,
+  EditFriendsplitButton,
 } from "@/components/friendsplit/friendsplit-actions";
 
 export const dynamic = "force-dynamic";
@@ -169,22 +170,31 @@ export default async function FriendsplitPage() {
                     : "border-rose-500/30 bg-gradient-to-br from-rose-500/10 via-[var(--surface)] to-rose-500/5",
               )}
             >
-              {/* Delete button (top-right corner of card) */}
-              <div className="absolute top-2 right-2 z-10">
-                <DeleteFriendsplitButton
-                  accountId={account.id}
-                  accountName={account.name}
-                  balance={balance}
-                  txCount={txs.length}
-                />
-              </div>
               <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="inline-flex items-center gap-2 mb-1">
-                    <span className="text-lg">{account.emoji ?? "🤝"}</span>
-                    <h2 className="text-base font-semibold truncate">
-                      {account.name.replace("Friendsplit ", "")}
-                    </h2>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <div className="inline-flex items-center gap-2 min-w-0">
+                      <span className="text-lg shrink-0">{account.emoji ?? "🤝"}</span>
+                      <h2 className="text-base font-semibold truncate">
+                        {account.name.replace("Friendsplit ", "")}
+                      </h2>
+                    </div>
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <EditFriendsplitButton
+                        account={{
+                          id: account.id,
+                          name: account.name,
+                          emoji: account.emoji,
+                          members: accountMembers,
+                        }}
+                      />
+                      <DeleteFriendsplitButton
+                        accountId={account.id}
+                        accountName={account.name}
+                        balance={balance}
+                        txCount={txs.length}
+                      />
+                    </div>
                   </div>
                   {accountMembers.length > 0 && (
                     <div className="flex items-center gap-1.5 text-[11px] text-[var(--fg-muted)]">
