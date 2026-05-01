@@ -260,7 +260,8 @@ export default async function Dashboard() {
             node: <WorldClocksWidget key="world-clocks" />,
             defaultSpan: 1,
             minSpan: 1,
-            maxSpan: 3,
+            // Max 2 col: a 3 col troppi orologi sparpagliati senza beneficio
+            maxSpan: 2,
           },
           {
             id: "world-daynight",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Globe2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -26,15 +26,40 @@ const DEFAULTS: Settings = { exchanges: DEFAULT_FAVORITE_EXCHANGES };
 export function WorldClocksWidget() {
   const [opts, setOpts, reset] = useWidgetSettings("market-favorites", DEFAULTS);
   const [now, setNow] = useState<Date | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Limite orologi visibili in base alla larghezza:
+  //   width < 500px (1 col) → max 4 orologi
+  //   width < 900px (2 col) → max 8 orologi
+  //   altrimenti (non dovrebbe accadere — maxSpan=2): tutti
+  const [maxClocks, setMaxClocks] = useState(8);
+
   useEffect(() => {
     setNow(new Date());
     const id = setInterval(() => setNow(new Date()), 30_000);
     return () => clearInterval(id);
   }, []);
 
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const ro = new ResizeObserver((entries) => {
+      const w = entries[0]?.contentRect.width ?? 0;
+      if (w === 0) return;
+      if (w < 500) setMaxClocks(4);
+      else if (w < 900) setMaxClocks(8);
+      else setMaxClocks(99); // wide: nessun limite (in pratica non avviene perché maxSpan=2)
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, []);
+
   const visible = useMemo(
-    () => ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)),
-    [opts.exchanges],
+    () =>
+      ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)).slice(0, maxClocks),
+    [opts.exchanges, maxClocks],
+  );
+  const hiddenCount = Math.max(
+    0,
+    ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)).length - visible.length,
   );
 
   const clocks = useMemo(() => {
@@ -60,6 +85,7 @@ export function WorldClocksWidget() {
   }
 
   return (
+    <div ref={containerRef}>
     <Card className="p-6 @container">
       <CardHeader className="mb-4">
         <CardTitle>
@@ -167,8 +193,15 @@ export function WorldClocksWidget() {
             </div>
           </>
         )}
+        {hiddenCount > 0 && (
+          <p className="text-[10px] text-[var(--fg-subtle)] text-center pt-3 border-t border-[var(--border)]/50 mt-3">
+            +{hiddenCount} {hiddenCount === 1 ? "borsa nascosta" : "borse nascoste"} —
+            allarga il widget per vederle tutte.
+          </p>
+        )}
       </CardContent>
     </Card>
+    </div>
   );
 }
 
