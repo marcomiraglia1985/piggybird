@@ -4,18 +4,16 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /**
  * True masonry layout (Pinterest-style): ogni card "sale" a riempire lo
- * spazio vuoto sopra di lei. CSS grid auto-flow:dense riempie solo gap
- * orizzontali nella stessa riga; per il flow verticale serve JS.
+ * spazio vuoto sopra di lei.
  *
- * Algoritmo:
- *   1. Misura larghezza container + altezza di ogni card (ResizeObserver)
- *   2. Per ogni card calcola la posizione: trova la combinazione di colonne
- *      consecutive (in base allo span) con la cima più bassa
- *   3. Posiziona la card con position:absolute (top, left, width)
- *   4. Container height = max(colHeights)
+ * Algoritmo a due fasi (per altezze accurate):
+ *   Phase 1 (initial paint): items renderizzati in CSS grid normale →
+ *     altezza accurata, layout corretto in attesa del calcolo masonry
+ *   Phase 2 (useLayoutEffect): misura altezze, calcola posizioni, switch
+ *     a position absolute. SYNC prima del paint → niente flash visivo.
  *
- * Re-layout automatico: quando container cambia size, contenuto card cambia,
- * o lista items cambia.
+ * Re-layout automatico via ResizeObserver (window resize + content height
+ * changes via async data, expand/collapse, ecc.).
  */
 
 export type MasonryItem = {
@@ -38,12 +36,13 @@ export function MasonryGrid({
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const [layout, setLayout] = useState<Map<string, Position>>(new Map());
-  const [containerHeight, setContainerHeight] = useState(0);
+  const [containerHeight, setContainerHeight] = useState<number | null>(null);
+  const layoutReady = layout.size === items.length && items.length > 0;
 
   function recompute() {
     const container = containerRef.current;
     if (!container || cols <= 0) return;
-    const W = container.offsetWidth;
+    const W = container.clientWidth;
     if (W <= 0) return;
     const colWidth = (W - gap * (cols - 1)) / cols;
     const colHeights = new Array(cols).fill(0);
@@ -51,8 +50,9 @@ export function MasonryGrid({
 
     for (const item of items) {
       const span = Math.max(1, Math.min(item.span, cols));
-      // Trova la posizione ottimale: per ogni possibile starting col,
-      // calcola la cima richiesta (max delle colonne span). Vince la più bassa.
+      // Per ogni starting col possibile, calcola la cima richiesta (max
+      // colonne occupate dallo span). Vince la più bassa. Tie-break: minor
+      // bestCol (più a sinistra).
       let bestCol = 0;
       let bestTop = Infinity;
       for (let c = 0; c <= cols - span; c++) {
@@ -67,7 +67,7 @@ export function MasonryGrid({
       const width = span * colWidth + (span - 1) * gap;
       newLayout.set(item.id, { top: bestTop, left, width });
 
-      // Aggiorna colHeights per le colonne occupate
+      // Aggiorna colHeights per le N colonne occupate (= stessa altezza)
       const el = itemRefs.current.get(item.id);
       const itemH = el?.offsetHeight ?? 0;
       const newH = bestTop + itemH + gap;
@@ -79,20 +79,21 @@ export function MasonryGrid({
     setContainerHeight(Math.max(0, Math.max(...colHeights) - gap));
   }
 
-  // Initial layout + ricomputazione quando items cambia
+  // Phase 2 — sync prima del paint: misura + calcola layout
   useLayoutEffect(() => {
     recompute();
-    // Ricompute al frame dopo per beccare layout post-paint (font rendering, ecc.)
+    // Anche al frame dopo per beccare re-layout post async data load
     const id = requestAnimationFrame(recompute);
     return () => cancelAnimationFrame(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [items, cols, gap]);
 
-  // ResizeObserver: ricomputa quando container cambia size O quando il
-  // contenuto di qualche card cambia altezza (es. async data, expand/collapse).
+  // ResizeObserver: container resize O content height changes
   useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
     const ro = new ResizeObserver(() => recompute());
-    if (containerRef.current) ro.observe(containerRef.current);
+    ro.observe(container);
     for (const el of itemRefs.current.values()) ro.observe(el);
     return () => ro.disconnect();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -101,11 +102,24 @@ export function MasonryGrid({
   return (
     <div
       ref={containerRef}
-      className="relative w-full"
-      style={{ height: containerHeight }}
+      className={layoutReady ? "relative w-full" : "w-full"}
+      style={{
+        // In phase 1 (no layout) usa CSS grid normale così items hanno
+        // larghezza corretta (per measure altezza). In phase 2 height
+        // explicit dal calcolo masonry.
+        ...(layoutReady
+          ? { height: containerHeight ?? undefined }
+          : {
+              display: "grid",
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              gap,
+              alignItems: "start",
+            }),
+      }}
     >
       {items.map((item) => {
         const pos = layout.get(item.id);
+        const span = Math.max(1, Math.min(item.span, cols));
         return (
           <div
             key={item.id}
@@ -114,15 +128,19 @@ export function MasonryGrid({
               else itemRefs.current.delete(item.id);
             }}
             style={
-              pos
+              layoutReady && pos
                 ? {
                     position: "absolute",
                     top: pos.top,
                     left: pos.left,
                     width: pos.width,
-                    transition: "top 0.2s ease, left 0.2s ease, width 0.2s ease",
+                    transition:
+                      "top 0.25s ease, left 0.25s ease, width 0.25s ease",
                   }
-                : { position: "absolute", visibility: "hidden" }
+                : {
+                    // Phase 1: posizione naturale nella grid, span colonne
+                    gridColumn: `span ${span}`,
+                  }
             }
           >
             {item.node}
