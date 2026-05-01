@@ -58,11 +58,14 @@ npx prisma migrate diff \
   --script \
   > src-tauri/standalone/prisma/init.sql
 
-# Init script che apply la SQL solo se DB è nuovo (no Setting table)
+# Init script: bootstrap se DB nuovo, OPPURE migrazione additiva se esistente.
+# Limitazione: gestisce solo CREATE TABLE nuove + ADD COLUMN. Drop/rename/type
+# changes richiedono migrazioni esplicite (TBD se mai necessarie).
 cat > src-tauri/standalone/init-db.js <<'INIT_EOF'
-// Esecuzione idempotente al boot dell'app: se il DB SQLite esiste ma è
-// vuoto (o nuovo), apply la schema iniziale. Se già popolato (Setting
-// table presente), non fa nulla.
+// Esecuzione al boot dell'app:
+//   - DB vergine (no Setting table) → apply schema completo da init.sql
+//   - DB esistente → parse init.sql, ADD COLUMN per colonne mancanti,
+//     CREATE TABLE per tabelle nuove (additive only)
 const Database = require("better-sqlite3");
 const fs = require("fs");
 const path = require("path");
@@ -76,22 +79,84 @@ if (!dbPath) {
 const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 
-const tables = db
-  .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Setting'")
-  .all();
+const sqlPath = path.join(__dirname, "prisma", "init.sql");
+const sql = fs.readFileSync(sqlPath, "utf8");
 
-if (tables.length > 0) {
-  console.log("[init-db] schema già presente, skip");
+const hasSetting = db
+  .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='Setting'")
+  .get();
+
+if (!hasSetting) {
+  console.log("[init-db] DB nuovo, applico schema completo");
+  db.exec(sql);
   db.close();
+  console.log("[init-db] OK (bootstrap)");
   process.exit(0);
 }
 
-const sqlPath = path.join(__dirname, "prisma", "init.sql");
-const sql = fs.readFileSync(sqlPath, "utf8");
-console.log("[init-db] DB nuovo, applico schema...");
-db.exec(sql);
+// Schema-additive migration: parse CREATE TABLE blocks e applica ALTER ADD
+// COLUMN per ogni colonna che manca nel DB esistente.
+console.log("[init-db] schema esistente, controllo migrazioni additive");
+let altered = 0;
+
+const tableRe = /CREATE\s+TABLE\s+"([^"]+)"\s*\(([\s\S]*?)\n\);/g;
+let m;
+while ((m = tableRe.exec(sql)) !== null) {
+  const tableName = m[1];
+  const body = m[2];
+  const lines = body.split("\n").map((l) => l.trim()).filter(Boolean);
+  const cols = [];
+  for (const line of lines) {
+    // Salta righe di constraint multi-colonna
+    if (/^(CONSTRAINT|FOREIGN\s+KEY|PRIMARY\s+KEY\s*\()/i.test(line)) continue;
+    const cm = /^"([^"]+)"\s+(.+?),?\s*$/.exec(line);
+    if (!cm) continue;
+    cols.push({ name: cm[1], def: cm[2].replace(/,$/, "").trim() });
+  }
+
+  const tableExists = db
+    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?")
+    .get(tableName);
+  if (!tableExists) {
+    console.log("[init-db] CREATE TABLE " + tableName);
+    db.exec(m[0]);
+    altered++;
+    continue;
+  }
+
+  const existingCols = new Set(
+    db.prepare("PRAGMA table_info(\"" + tableName + "\")").all().map((r) => r.name),
+  );
+  for (const col of cols) {
+    if (existingCols.has(col.name)) continue;
+    // SQLite ADD COLUMN: rimuovi PRIMARY KEY/UNIQUE; se NOT NULL senza DEFAULT,
+    // rimuovi NOT NULL (alternativa: forzare DEFAULT NULL ma rompe semantics).
+    let def = col.def
+      .replace(/\bPRIMARY\s+KEY\b/gi, "")
+      .replace(/\bUNIQUE\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (/NOT NULL/i.test(def) && !/DEFAULT/i.test(def)) {
+      def = def.replace(/NOT NULL/gi, "").trim();
+    }
+    try {
+      const stmt = "ALTER TABLE \"" + tableName + "\" ADD COLUMN \"" + col.name + "\" " + def;
+      console.log("[init-db] " + tableName + "." + col.name + ": " + def);
+      db.exec(stmt);
+      altered++;
+    } catch (e) {
+      console.error("[init-db] FAIL " + tableName + "." + col.name + ": " + e.message);
+      // Continua: meglio app parzialmente migrata che boot bloccato
+    }
+  }
+}
+
+if (altered === 0) {
+  console.log("[init-db] schema già allineato, nessuna modifica");
+} else {
+  console.log("[init-db] OK (" + altered + " modifiche additive applicate)");
+}
 db.close();
-console.log("[init-db] OK");
 INIT_EOF
 
 # Verifica Node binary per sidecar
