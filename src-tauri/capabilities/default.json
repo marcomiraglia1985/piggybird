@@ -7,16 +7,6 @@
     "core:default",
     "shell:default",
     {
-      "identifier": "shell:allow-execute",
-      "allow": [
-        {
-          "name": "node",
-          "sidecar": true,
-          "args": true
-        }
-      ]
-    },
-    {
       "identifier": "shell:allow-open",
       "allow": [
         { "url": "^https?://.*" }
