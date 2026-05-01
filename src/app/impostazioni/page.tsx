@@ -8,7 +8,6 @@ import { PreferenzeSection } from "@/components/impostazioni/preferenze-section"
 import { SistemaSection } from "@/components/impostazioni/sistema-section";
 import { DatiSection } from "@/components/impostazioni/dati-section";
 import { NotificheSection } from "@/components/impostazioni/notifiche-section";
-import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +27,9 @@ export default async function ImpostazioniPage() {
         <Section title="Preferenze">
           <PreferenzeSection />
         </Section>
-        <div className="space-y-8">
-          <Section title="Profilo">
-            <ProfiloSection />
-          </Section>
-          <Section title="Snapshot di debug">
-            <DebugSnapshotSection />
-          </Section>
-        </div>
+        <Section title="Profilo">
+          <ProfiloSection />
+        </Section>
       </div>
 
       <Section title="Integrazioni">

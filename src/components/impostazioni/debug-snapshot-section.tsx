@@ -57,27 +57,19 @@ export function DebugSnapshotSection() {
 
   return (
     <>
-      <div className="surface p-4 space-y-3 max-w-md">
-        <div className="flex items-center gap-2">
-          <Bug className="size-4 text-rose-400" />
-          <h3 className="text-sm font-medium">Snapshot di debug</h3>
-        </div>
-        <p className="text-[11px] text-[var(--fg-subtle)] leading-relaxed">
-          Hai trovato un bug? Manda uno snapshot del tuo database al developer per
-          aiutare a riprodurlo. Include una copia compressa del tuo DB e il tuo
-          profilo. <strong>Niente viene inviato senza il tuo click.</strong>
-        </p>
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="group inline-flex items-center gap-2 h-9 pl-3 pr-2.5 rounded-lg bg-gradient-to-br from-rose-500/[0.12] to-orange-500/[0.06] border border-rose-500/30 text-xs font-medium text-rose-300 hover:from-rose-500/[0.18] hover:to-orange-500/[0.10] hover:border-rose-500/50 hover:text-rose-200 transition-colors"
-        >
-          <span className="size-5 inline-flex items-center justify-center rounded-md bg-rose-500/20 border border-rose-500/30">
-            <Bug className="size-3" />
-          </span>
-          Mandami uno snapshot
-        </button>
-      </div>
+      {/* Floating action button: posizionato fixed bottom-right, sempre
+          visibile su qualsiasi pagina della app. Etichetta "Report a bug"
+          appare al hover su desktop; su mobile solo icona. */}
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        title="Report a bug"
+        aria-label="Report a bug"
+        className="group fixed bottom-4 right-4 z-40 inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full bg-gradient-to-br from-rose-500/90 to-orange-500/80 text-white text-xs font-medium shadow-lg shadow-rose-500/30 hover:shadow-rose-500/50 hover:from-rose-500 hover:to-orange-500 transition-all"
+      >
+        <Bug className="size-4 shrink-0" />
+        <span className="hidden sm:inline">Report a bug</span>
+      </button>
 
       <AnimatePresence>
         {open && (

@@ -13,6 +13,7 @@ import { estateValueStatus } from "@/lib/estate-value";
 import { hasCompletedOnboarding } from "@/lib/user-profile";
 import { WelcomeOnboarding } from "@/components/welcome-onboarding";
 import { SentryUserContext } from "@/components/sentry-user-context";
+import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
 import NextTopLoader from "nextjs-toploader";
 
 const geistSans = Geist({
@@ -82,6 +83,8 @@ export default async function RootLayout({
               </div>
               <CommandPalette />
               <SentryUserContext />
+              {/* Floating "Report a bug" button: visibile su tutte le pagine */}
+              <DebugSnapshotSection />
               {!onboarded && <WelcomeOnboarding />}
             </ConfirmProvider>
           </ToastProvider>
