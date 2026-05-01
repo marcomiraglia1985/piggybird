@@ -18,6 +18,9 @@ const VALID_TYPES = ["liquid", "joint", "cash", "savings", "credit", "investment
 const CreateSchema = z.object({
   name: z.string().trim().min(1).max(60),
   type: z.enum(VALID_TYPES),
+  /** Provider esterno per gating integrazioni in Impostazioni.
+   *  Default "generic" (no API). */
+  provider: z.string().trim().min(1).max(32).default("generic"),
   currency: z.string().trim().min(2).max(8).default("EUR"),
   emoji: z.string().trim().max(8).optional().nullable(),
   ownershipShare: z.number().min(0).max(1).default(1),
@@ -56,6 +59,7 @@ export async function POST(req: NextRequest) {
     data: {
       name: data.name,
       type: data.type,
+      provider: data.provider,
       currency: data.currency.toUpperCase(),
       emoji: data.emoji?.trim() || null,
       ownershipShare: data.ownershipShare,

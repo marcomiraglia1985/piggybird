@@ -10,6 +10,7 @@ import {
   Sparkles,
   Plus,
   ArrowUpRight,
+  Loader2,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
@@ -109,6 +110,19 @@ export function ImportClient() {
   // Banche aggiunte dinamicamente via universal AI fallback (es. N26).
   // Mostrate accanto a SUPPORTED_BANKS hardcoded col badge ✨.
   const [aiBanks, setAiBanks] = useState<{ name: string; usageCount: number }[]>([]);
+  // Tempo trascorso in stage="parsing" — usato per cambiare il messaggio
+  // dinamicamente: dopo qualche secondo l'utente capisce che il delay è AI.
+  const [parsingElapsedMs, setParsingElapsedMs] = useState(0);
+
+  useEffect(() => {
+    if (stage !== "parsing") {
+      setParsingElapsedMs(0);
+      return;
+    }
+    const start = Date.now();
+    const id = setInterval(() => setParsingElapsedMs(Date.now() - start), 250);
+    return () => clearInterval(id);
+  }, [stage]);
 
   useEffect(() => {
     fetch("/api/parser-templates")
@@ -371,17 +385,28 @@ export function ImportClient() {
             className="flex flex-col items-center gap-3"
           >
             <div className="size-14 rounded-2xl bg-gradient-to-br from-violet-500 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20">
-              <UploadCloud className="size-7 text-white" />
+              {stage === "parsing" ? (
+                <Loader2 className="size-7 text-white animate-spin" />
+              ) : (
+                <UploadCloud className="size-7 text-white" />
+              )}
             </div>
             <div>
               <p className="text-base font-medium">
                 {stage === "parsing"
-                  ? "Analisi del file…"
+                  ? parsingElapsedMs < 2500
+                    ? "Analisi del file…"
+                    : parsingElapsedMs < 7000
+                      ? "Riconoscimento del formato…"
+                      : "Apprendimento di una nuova banca via AI…"
                   : "Trascina qui il file (CSV o XLSX)"}
               </p>
               <p className="text-sm text-[var(--fg-muted)] mt-1">
-                Il formato viene riconosciuto automaticamente. Banche
-                supportate qui sotto.
+                {stage === "parsing"
+                  ? parsingElapsedMs < 7000
+                    ? "Il formato viene riconosciuto automaticamente."
+                    : "Sta succedendo solo questa volta — la prossima volta sarà istantaneo per questa banca."
+                  : "Il formato viene riconosciuto automaticamente. Banche supportate qui sotto."}
               </p>
             </div>
             <label className="cursor-pointer inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm hover:border-[var(--border-strong)]">

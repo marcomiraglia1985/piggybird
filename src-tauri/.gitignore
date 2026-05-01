@@ -2,3 +2,11 @@
 # will have compiled files and executables
 /target/
 /gen/schemas
+
+# Build artifacts rigenerati via tools/ (NON committare)
+# - binaries/: Node binary embedded come Tauri sidecar (116MB)
+#   rigenerato da tools/download-node-binary.sh
+# - standalone/: snapshot Next.js standalone con node_modules (69MB)
+#   rigenerato da tools/tauri-prebuild.sh
+/binaries/
+/standalone/

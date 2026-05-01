@@ -10,6 +10,9 @@ export type UserProfile = {
   name: string;
   email: string;
   countries: string[];
+  /** Città di residenza (free text, no normalization). Usato per stats
+   *  aggregate del personality test (scope city). Vuoto = no city scope. */
+  city: string;
   // Optional demographic
   /** Data di nascita ISO "YYYY-MM-DD". Da qui ricaviamo l'età corrente
    *  via calcAge(), così non serve aggiornare manualmente l'età ogni anno. */
@@ -19,6 +22,11 @@ export type UserProfile = {
   trackingExperience: string; // "first" | "excel" | "fintech" | "other" | ""
   /** Multi-select: cosa cerchi in Piggybird */
   goals: string[]; // subset di GOAL_OPTIONS values
+  monthlyIncome: string; // subset di MONTHLY_INCOME_OPTIONS values, o ""
+  childrenCount: string; // subset di CHILDREN_COUNT_OPTIONS values, o ""
+  retirementAge: string; // subset di RETIREMENT_AGE_OPTIONS values, o ""
+  riskTolerance: string; // subset di RISK_TOLERANCE_OPTIONS values, o ""
+  housingType: string; // subset di HOUSING_TYPE_OPTIONS values, o ""
 };
 
 export const FAMILY_STATUSES = [

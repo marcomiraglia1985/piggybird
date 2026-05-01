@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Plus } from "lucide-react";
+import { getProvidersForAccountType } from "@/lib/account-providers";
 
 const TYPES = [
   { value: "liquid", label: "Liquidità", emoji: "💳", desc: "Conto corrente personale" },
@@ -25,6 +26,7 @@ export function NewAccountForm() {
   })();
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["value"]>(initialType);
+  const [provider, setProvider] = useState<string>("generic");
   const [currency, setCurrency] = useState("EUR");
   const [emoji, setEmoji] = useState("");
   const [ownership, setOwnership] = useState("1");
@@ -38,7 +40,12 @@ export function NewAccountForm() {
     setType(v);
     if (v === "joint" && ownership === "1") setOwnership("0.666666666666667");
     if (v !== "joint" && ownership !== "1") setOwnership("1");
+    // Reset provider quando cambi type — alcuni provider sono compatibili
+    // solo con certi tipi (es. binance/revolut-x solo con investment)
+    setProvider("generic");
   }
+
+  const providersForType = getProvidersForAccountType(type);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -51,6 +58,7 @@ export function NewAccountForm() {
         body: JSON.stringify({
           name: name.trim(),
           type,
+          provider,
           currency,
           emoji: emoji.trim() || selected.emoji,
           ownershipShare: parseFloat(ownership),
@@ -94,6 +102,39 @@ export function NewAccountForm() {
           ))}
         </div>
       </div>
+
+      {providersForType.length > 1 && (
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+            Provider esterno
+            <span className="text-[var(--fg-subtle)] normal-case tracking-normal ml-1">
+              (per attivare API/sync automatico)
+            </span>
+          </label>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {providersForType.map((p) => (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setProvider(p.id)}
+                className={`text-left p-2.5 rounded-lg border transition-colors ${
+                  provider === p.id
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-[var(--border)] bg-[var(--surface-2)]/40 hover:border-[var(--border-strong)]"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>{p.emoji}</span>
+                  <span className="font-medium text-xs">{p.label}</span>
+                </div>
+                <div className="text-[10px] text-[var(--fg-subtle)] mt-0.5 leading-snug">
+                  {p.description}
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">

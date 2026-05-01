@@ -13,7 +13,7 @@ export default async function PersonalityPage() {
     <PersonalityTestClient
       profile={profile}
       userCountry={user.countries[0] ?? null}
-      userCity={null}
+      userCity={user.city || null}
     />
   );
 }

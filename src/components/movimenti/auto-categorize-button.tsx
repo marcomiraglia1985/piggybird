@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { AIButton, AIBadge } from "@/components/ui/ai-button";
+import { AiDisclaimer } from "@/components/ui/ai-disclaimer";
 import { useToast } from "@/components/ui/toast";
 import { formatEUR, formatDate, cn } from "@/lib/utils";
 import { formatCostEur } from "@/lib/ai-pricing";
@@ -506,15 +507,18 @@ export function AutoCategorizeButton({
               )}
 
               {stage === "review" && suggestions && suggestions.length > 0 && (
-                <SuggestionsList
-                  suggestions={suggestions}
-                  categories={categories}
-                  estates={estates}
-                  onToggle={toggleRow}
-                  onOverride={setOverride}
-                  onGroupOverride={setOverrideForTxIds}
-                  onGroupToggle={toggleSelectionForTxIds}
-                />
+                <>
+                  <SuggestionsList
+                    suggestions={suggestions}
+                    categories={categories}
+                    estates={estates}
+                    onToggle={toggleRow}
+                    onOverride={setOverride}
+                    onGroupOverride={setOverrideForTxIds}
+                    onGroupToggle={toggleSelectionForTxIds}
+                  />
+                  <AiDisclaimer className="mt-4" />
+                </>
               )}
             </div>
 

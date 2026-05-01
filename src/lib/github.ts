@@ -29,7 +29,7 @@ function getEnv(): { token: string; owner: string; repo: string } {
 
 async function gh<T>(
   path: string,
-  init: RequestInit & { body?: BodyInit | object } = {},
+  init: Omit<RequestInit, "body"> & { body?: BodyInit | object } = {},
 ): Promise<T> {
   const { token } = getEnv();
   const headers: Record<string, string> = {
@@ -47,7 +47,10 @@ async function gh<T>(
       body = init.body as BodyInit;
     }
   }
-  const res = await fetch(`${API}${path}`, { ...init, headers, body });
+  // No-cache: il check-update vuole sempre l'ultima release fresca. Senza
+  // questo, Next.js cacha la fetch in .next/cache/fetch-cache/ persistente
+  // → la app installata non vede mai le release pubblicate dopo il bundling.
+  const res = await fetch(`${API}${path}`, { ...init, headers, body, cache: "no-store" });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(`GitHub ${init.method ?? "GET"} ${path} → ${res.status}: ${text.slice(0, 300)}`);

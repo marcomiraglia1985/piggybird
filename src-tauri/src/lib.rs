@@ -1,16 +1,236 @@
+use std::fs;
+use std::io::Write;
+use std::net::TcpStream;
+use std::path::PathBuf;
+use std::sync::OnceLock;
+use std::time::Duration;
+use tauri::{AppHandle, Manager};
+use tauri_plugin_shell::ShellExt;
+
+static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+fn log_line(line: &str) {
+    if let Some(p) = LOG_PATH.get() {
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            let _ = writeln!(f, "[{}] {}", chrono_now(), line);
+        }
+    }
+    log::info!("{}", line);
+}
+
+fn chrono_now() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("{}", secs)
+}
+
+/// Porta su cui spawniamo il Node sidecar interno. La WebView (splash.html)
+/// punta a questa porta. Hardcoded per ora — se collide con un servizio
+/// dell'utente, l'app non si avvia (errore visibile in splash).
+const SIDECAR_PORT: u16 = 13371;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
-    .setup(|app| {
-      if cfg!(debug_assertions) {
-        app.handle().plugin(
-          tauri_plugin_log::Builder::default()
-            .level(log::LevelFilter::Info)
-            .build(),
-        )?;
-      }
-      Ok(())
-    })
-    .run(tauri::generate_context!())
-    .expect("error while running tauri application");
+    tauri::Builder::default()
+        .plugin(tauri_plugin_shell::init())
+        .setup(|app| {
+            if cfg!(debug_assertions) {
+                app.handle().plugin(
+                    tauri_plugin_log::Builder::default()
+                        .level(log::LevelFilter::Info)
+                        .build(),
+                )?;
+            }
+
+            // Determina app data dir (es. ~/Library/Application Support/app.piggybird/)
+            // e crea il path del DB locale dell'utente.
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app_data_dir");
+            fs::create_dir_all(&app_data_dir)?;
+            // Log to file: ~/Library/Application Support/app.piggybird/piggybird.log
+            // Sempre attivo (anche release) — utile per debug bug nei beta tester.
+            let _ = LOG_PATH.set(app_data_dir.join("piggybird.log"));
+            log_line(&format!("=== Piggybird boot v{} ===", env!("CARGO_PKG_VERSION")));
+            log_line(&format!("app_data_dir: {}", app_data_dir.display()));
+            let db_path = app_data_dir.join("piggybird.db");
+            // Prisma vuole l'URL "file:" + path assoluto
+            let database_url = format!("file:{}", db_path.to_string_lossy());
+
+            // Path al bundle standalone Next.js (incluso come Tauri resource)
+            let resource_dir = app
+                .path()
+                .resource_dir()
+                .expect("failed to resolve resource_dir");
+            let standalone_dir: PathBuf = resource_dir.join("standalone");
+            let server_js = standalone_dir.join("server.js");
+            let prisma_schema = standalone_dir.join("prisma").join("schema.prisma");
+
+            log::info!("[piggybird] DATABASE_URL = {}", database_url);
+            log::info!("[piggybird] standalone = {}", standalone_dir.display());
+
+            let app_handle = app.handle().clone();
+
+            // Spawn async: prima migrate (one-shot), poi sidecar Next.js server
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = bootstrap_and_serve(
+                    app_handle,
+                    server_js,
+                    prisma_schema,
+                    standalone_dir,
+                    database_url,
+                )
+                .await
+                {
+                    log_line(&format!("sidecar fatal: {}", e));
+                }
+            });
+
+            // Thread separato: polla la porta del sidecar e quando è up,
+            // naviga la WebView principale a localhost. Strategia robusta
+            // perché lo splash html (file://) NON può fare fetch http://
+            // per security policy WebKit (cross-origin file→http blocked).
+            let app_handle_nav = app.handle().clone();
+            std::thread::spawn(move || {
+                wait_and_navigate(app_handle_nav);
+            });
+
+            Ok(())
+        })
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+fn wait_and_navigate(app: AppHandle) {
+    // Polling TCP della porta sidecar: se accept connection → server è ready.
+    // Niente HTTP client (no deps extra) — basta verificare il listen socket.
+    let addr = format!("127.0.0.1:{}", SIDECAR_PORT);
+    let socket: std::net::SocketAddr = match addr.parse() {
+        Ok(a) => a,
+        Err(e) => {
+            log_line(&format!("[wait-and-nav] addr parse error: {}", e));
+            return;
+        }
+    };
+    let max_attempts = 60u32; // 60 × 500ms = 30s
+    for attempt in 1..=max_attempts {
+        if TcpStream::connect_timeout(&socket, Duration::from_millis(500)).is_ok() {
+            log_line(&format!(
+                "[wait-and-nav] sidecar ready dopo {} attempt, navigate WebView",
+                attempt
+            ));
+            // Naviga la window principale a localhost
+            if let Some(window) = app.get_webview_window("main") {
+                let url_str = format!("http://127.0.0.1:{}/", SIDECAR_PORT);
+                match url::Url::parse(&url_str) {
+                    Ok(parsed) => {
+                        if let Err(e) = window.navigate(parsed) {
+                            log_line(&format!("[wait-and-nav] navigate error: {}", e));
+                        } else {
+                            log_line("[wait-and-nav] navigated to localhost OK");
+                        }
+                    }
+                    Err(e) => log_line(&format!("[wait-and-nav] url parse error: {}", e)),
+                }
+            } else {
+                log_line("[wait-and-nav] main window not found");
+            }
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(500));
+    }
+    log_line("[wait-and-nav] TIMEOUT 30s — sidecar non risponde");
+}
+
+async fn bootstrap_and_serve(
+    app: AppHandle,
+    server_js: PathBuf,
+    _prisma_schema: PathBuf,
+    standalone_dir: PathBuf,
+    database_url: String,
+) -> Result<(), String> {
+    let shell = app.shell();
+
+    // Step 1: init-db.js — script bundlato che apply lo schema SQL via
+    // better-sqlite3 SOLO se la tabella Setting non esiste (idempotente).
+    // Più snello del CLI Prisma (che NFT non bundla).
+    let init_db_js = standalone_dir.join("init-db.js");
+    log_line(&format!("init-db.js path: {}", init_db_js.display()));
+    if !init_db_js.exists() {
+        log_line("[FATAL] init-db.js non trovato nel bundle");
+        return Err(format!("init-db.js missing at {}", init_db_js.display()));
+    }
+    log_line("Step 1/2: inizializzo schema DB...");
+    let migrate_cmd = shell
+        .sidecar("node")
+        .map_err(|e| format!("sidecar lookup failed: {}", e))?
+        .args([init_db_js.to_string_lossy().to_string()])
+        .env("DATABASE_URL", &database_url)
+        .current_dir(standalone_dir.clone());
+    match migrate_cmd.output().await {
+        Ok(out) => {
+            let stdout_s = String::from_utf8_lossy(&out.stdout);
+            let stderr_s = String::from_utf8_lossy(&out.stderr);
+            if !stdout_s.trim().is_empty() {
+                log_line(&format!("init-db stdout: {}", stdout_s.trim()));
+            }
+            if !stderr_s.trim().is_empty() {
+                log_line(&format!("init-db stderr: {}", stderr_s.trim()));
+            }
+            if !out.status.success() {
+                log_line(&format!("[FATAL] init-db exit code: {:?}", out.status.code()));
+                return Err(format!("init-db failed code {:?}", out.status.code()));
+            }
+        }
+        Err(e) => {
+            log_line(&format!("[FATAL] init-db spawn error: {}", e));
+            return Err(format!("init-db spawn failed: {}", e));
+        }
+    }
+
+    // Step 2: spawn Next.js standalone server (lunga vita)
+    log_line(&format!("Step 2/2: avvio Next.js su porta {}", SIDECAR_PORT));
+    let server_cmd = shell
+        .sidecar("node")
+        .map_err(|e| format!("sidecar lookup failed: {}", e))?
+        .args([server_js.to_string_lossy().to_string()])
+        .env("DATABASE_URL", &database_url)
+        .env("PORT", SIDECAR_PORT.to_string())
+        .env("HOSTNAME", "127.0.0.1")
+        .env("NODE_ENV", "production")
+        .current_dir(standalone_dir);
+
+    let (mut rx, _child) = server_cmd
+        .spawn()
+        .map_err(|e| format!("sidecar spawn failed: {}", e))?;
+
+    // Pump stdout/stderr → log Tauri (visibile in console se runa con `cargo tauri dev`)
+    while let Some(event) = rx.recv().await {
+        use tauri_plugin_shell::process::CommandEvent;
+        match event {
+            CommandEvent::Stdout(line) => {
+                log_line(&format!("[next-out] {}", String::from_utf8_lossy(&line).trim_end()));
+            }
+            CommandEvent::Stderr(line) => {
+                log_line(&format!("[next-err] {}", String::from_utf8_lossy(&line).trim_end()));
+            }
+            CommandEvent::Error(err) => {
+                log_line(&format!("[next] error: {}", err));
+            }
+            CommandEvent::Terminated(payload) => {
+                log_line(&format!(
+                    "[next] sidecar exited code={:?} signal={:?}",
+                    payload.code, payload.signal
+                ));
+                break;
+            }
+            _ => {}
+        }
+    }
+
+    Ok(())
 }

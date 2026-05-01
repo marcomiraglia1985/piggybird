@@ -41,6 +41,7 @@ export function ProfiloSection() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [countries, setCountries] = useState<string[]>([]);
+  const [city, setCity] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [familyStatus, setFamilyStatus] = useState("");
   const [profession, setProfession] = useState("");
@@ -56,6 +57,31 @@ export function ProfiloSection() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editMode, setEditMode] = useState(false);
+  // Archetipo personality test (lazy fetch — opzionale, non blocca render)
+  const [archetype, setArchetype] = useState<{
+    id: string;
+    name: string;
+    emoji: string;
+    bird: string;
+    tagline: string;
+  } | null>(null);
+
+  useEffect(() => {
+    fetch("/api/personality")
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.completed && d?.archetype) {
+          setArchetype({
+            id: d.archetype.id,
+            name: d.archetype.name,
+            emoji: d.archetype.emoji,
+            bird: d.archetype.bird,
+            tagline: d.archetype.tagline,
+          });
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     fetch("/api/profile")
@@ -65,6 +91,7 @@ export function ProfiloSection() {
         setName(p.name ?? "");
         setEmail(p.email ?? "");
         setCountries(Array.isArray(p.countries) ? p.countries : []);
+        setCity(p.city ?? "");
         setBirthDate(p.birthDate ?? "");
         setFamilyStatus(p.familyStatus ?? "");
         setProfession(p.profession ?? "");
@@ -196,6 +223,9 @@ export function ProfiloSection() {
               <Loading />
             )}
           </Row>
+          <Row icon={<Globe className="size-3" />} label="Città">
+            {loaded ? city ? <span>{city}</span> : <Empty /> : <Loading />}
+          </Row>
           <Row icon={<Cake className="size-3" />} label="Età">
             {loaded ? (
               (() => {
@@ -326,7 +356,7 @@ export function ProfiloSection() {
                 if (e.key === "Enter") (e.target as HTMLInputElement).blur();
               }}
               disabled={!loaded}
-              placeholder="Es. Marco Miraglia"
+              placeholder="Il tuo nome"
               className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50 disabled:opacity-50"
             />
           </EditField>
@@ -351,6 +381,21 @@ export function ProfiloSection() {
               value={countries}
               onChange={updateCountries}
               placeholder="Cerca un paese europeo…"
+            />
+          </EditField>
+
+          <EditField label="Città" icon={<Globe className="size-3" />}>
+            <input
+              type="text"
+              value={city}
+              onChange={(e) => setCity(e.target.value)}
+              onBlur={() => persist({ city: city.trim() })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+              }}
+              placeholder="Es. Milano, Paris, Berlin…"
+              maxLength={64}
+              className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
             />
           </EditField>
 
@@ -554,21 +599,40 @@ export function ProfiloSection() {
 
       <Link
         href="/impostazioni/personality"
-        className="group flex items-center gap-3 rounded-lg p-3 mt-2 bg-gradient-to-br from-violet-500/[0.10] to-indigo-500/[0.04] border border-violet-500/30 hover:from-violet-500/[0.18] hover:to-indigo-500/[0.08] hover:border-violet-500/50 transition-colors"
+        className="group flex items-center gap-3 rounded-lg p-3 mt-2 bg-gradient-to-br from-violet-500/[0.14] to-indigo-500/[0.06] border border-violet-500/40 hover:from-violet-500/[0.22] hover:to-indigo-500/[0.10] hover:border-violet-500/60 transition-colors"
       >
-        <span className="size-8 rounded-lg bg-violet-500/20 border border-violet-500/30 flex items-center justify-center shrink-0">
-          <Brain className="size-4 text-violet-300" />
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="text-xs font-medium text-violet-200">
-            Take a personality test
-          </div>
-          <div className="text-[10px] text-[var(--fg-subtle)] mt-0.5 leading-snug">
-            Capisci che tipo di persona finanziaria sei. Personalizza la AI di
-            Piggybird sul tuo modo di pensare ai soldi.
-          </div>
-        </div>
-        <ChevronRight className="size-4 text-violet-400 group-hover:translate-x-0.5 transition-transform" />
+        {archetype ? (
+          <>
+            <span className="size-10 rounded-lg bg-violet-500/25 border border-violet-500/40 flex items-center justify-center shrink-0 text-2xl leading-none">
+              {archetype.emoji}
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-violet-800 dark:text-violet-100">
+                Sei {archetype.name}{" "}
+                <span className="font-normal opacity-70">({archetype.bird})</span>
+              </div>
+              <div className="text-[10px] text-violet-900/75 dark:text-violet-200/75 mt-0.5 italic leading-snug">
+                &quot;{archetype.tagline}&quot;
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <span className="size-8 rounded-lg bg-violet-500/25 border border-violet-500/40 flex items-center justify-center shrink-0">
+              <Brain className="size-4 text-violet-700 dark:text-violet-200" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-semibold text-violet-800 dark:text-violet-100">
+                Take a personality test
+              </div>
+              <div className="text-[10px] text-violet-900/75 dark:text-violet-200/75 mt-0.5 leading-snug">
+                Capisci che tipo di persona finanziaria sei. Personalizza la AI di
+                Piggybird sul tuo modo di pensare ai soldi.
+              </div>
+            </div>
+          </>
+        )}
+        <ChevronRight className="size-4 text-violet-700 dark:text-violet-300 group-hover:translate-x-0.5 transition-transform" />
       </Link>
     </div>
   );

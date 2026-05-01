@@ -32,6 +32,42 @@ const HIDDEN_KEY = "fp-dashboard-hidden";
 const SPANS_KEY = "fp-dashboard-spans";
 const WIDE = "wide";
 
+/**
+ * Layout di DEFAULT per il primo accesso (zero localStorage). Sovrascritto
+ * dalle scelte dell'utente non appena tocca la dashboard. Per aggiornare
+ * il default: configura il layout come vuoi tu, poi (in dev) leggi
+ * `localStorage.getItem("fp-dashboard-placement-v2")` ecc. da DevTools e
+ * incolla i valori qui sotto.
+ */
+const DEFAULT_COLS: Cols = 2;
+const DEFAULT_SPANS: Record<string, number> = {
+  "networth-chart": 1,
+};
+const DEFAULT_HIDDEN: string[] = [
+  "world-daynight",
+  "top-expenses",
+  "asset-allocation",
+  "estate-roi",
+  "sp500-beat",
+  "anniversary",
+  "coffee-tracker",
+  "world-clocks",
+];
+const DEFAULT_PLACEMENT: Placement = {
+  wide: [
+    "networth-chart",
+    "world-daynight",
+    "milestones",
+    "future-you",
+    "month-summary",
+    "accounts",
+  ],
+  cols: [
+    ["top-expenses", "asset-allocation", "estate-roi", "sp500-beat"],
+    ["anniversary", "coffee-tracker", "world-clocks", "recent-transactions"],
+  ],
+};
+
 export type DashboardCard = {
   id: string;
   label: string;
@@ -211,36 +247,60 @@ export function DashboardGrid({
 
   useEffect(() => {
     setMounted(true);
-    let lc: Cols = 2;
-    let ls: Record<string, number> = {};
-    let lh = new Set<string>();
-    let lp: Placement | null = null;
-    try {
-      const c = localStorage.getItem(COLS_KEY);
-      if (c === "1" || c === "2" || c === "3") lc = parseInt(c, 10) as Cols;
-      const sp = localStorage.getItem(SPANS_KEY);
-      if (sp) {
-        const obj = JSON.parse(sp) as Record<string, number>;
-        for (const c of cards) {
-          const v = obj[c.id];
-          if (Number.isInteger(v) && v > 0) ls[c.id] = v;
+    // First-run detection: se PLACEMENT_KEY non esiste, è il primo accesso
+    // dell'utente → applichiamo i DEFAULT_* baked. Altrimenti rispettiamo
+    // tutto quello che l'utente ha già configurato in localStorage.
+    const hasUserConfig =
+      typeof window !== "undefined" && !!localStorage.getItem(PLACEMENT_KEY);
+
+    let lc: Cols;
+    let ls: Record<string, number>;
+    let lh: Set<string>;
+    let lp: Placement | null;
+
+    if (!hasUserConfig) {
+      lc = DEFAULT_COLS;
+      ls = { ...DEFAULT_SPANS };
+      lh = new Set(DEFAULT_HIDDEN.filter((id) => cards.some((c) => c.id === id)));
+      lp = DEFAULT_PLACEMENT;
+    } else {
+      lc = 2;
+      ls = {};
+      lh = new Set();
+      lp = null;
+      try {
+        const c = localStorage.getItem(COLS_KEY);
+        if (c === "1" || c === "2" || c === "3") lc = parseInt(c, 10) as Cols;
+        const sp = localStorage.getItem(SPANS_KEY);
+        if (sp) {
+          const obj = JSON.parse(sp) as Record<string, number>;
+          for (const c of cards) {
+            const v = obj[c.id];
+            if (Number.isInteger(v) && v > 0) ls[c.id] = v;
+          }
         }
-      }
-      const h = localStorage.getItem(HIDDEN_KEY);
-      if (h) {
-        const idsArr = JSON.parse(h) as string[];
-        lh = new Set(idsArr.filter((id) => cards.some((c) => c.id === id)));
-      }
-      const p = localStorage.getItem(PLACEMENT_KEY);
-      if (p) {
-        const parsed = JSON.parse(p) as Placement;
-        if (parsed && Array.isArray(parsed.wide) && Array.isArray(parsed.cols)) lp = parsed;
-      }
-    } catch {}
+        const h = localStorage.getItem(HIDDEN_KEY);
+        if (h) {
+          const idsArr = JSON.parse(h) as string[];
+          lh = new Set(idsArr.filter((id) => cards.some((c) => c.id === id)));
+        }
+        const p = localStorage.getItem(PLACEMENT_KEY);
+        if (p) {
+          const parsed = JSON.parse(p) as Placement;
+          if (parsed && Array.isArray(parsed.wide) && Array.isArray(parsed.cols))
+            lp = parsed;
+        }
+      } catch {}
+    }
+
     setCols(lc);
     setSpans(ls);
     setHidden(lh);
-    setPlacement(lp ? reconcilePlacement(lp, cards, lc, ls) : buildInitialPlacement(cards, lc, ls));
+    setPlacement(
+      lp
+        ? reconcilePlacement(lp, cards, lc, ls)
+        : buildInitialPlacement(cards, lc, ls),
+    );
   }, [cards]);
 
   function persistPlacement(next: Placement) {

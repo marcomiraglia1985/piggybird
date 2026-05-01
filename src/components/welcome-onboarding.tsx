@@ -32,6 +32,7 @@ export function WelcomeOnboarding() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [countries, setCountries] = useState<string[]>([]);
+  const [city, setCity] = useState("");
   const [birthDate, setBirthDate] = useState("");
   const [familyStatus, setFamilyStatus] = useState("");
   const [profession, setProfession] = useState("");
@@ -53,6 +54,7 @@ export function WelcomeOnboarding() {
         if (p.name) setName(p.name);
         if (p.email) setEmail(p.email);
         if (Array.isArray(p.countries) && p.countries.length > 0) setCountries(p.countries);
+        if (p.city) setCity(p.city);
         if (p.birthDate) setBirthDate(p.birthDate);
         if (p.familyStatus) setFamilyStatus(p.familyStatus);
         if (p.profession) setProfession(p.profession);
@@ -86,6 +88,7 @@ export function WelcomeOnboarding() {
           name: name.trim(),
           email: email.trim(),
           countries,
+          city,
           birthDate,
           familyStatus,
           profession,
@@ -103,6 +106,10 @@ export function WelcomeOnboarding() {
         throw new Error(j.error ?? "Errore");
       }
       router.refresh();
+      // Notifica al WelcomeTutorial che il profilo è completato → può partire
+      // (senza questo evento, il tutorial non rileva il cambio perché il suo
+      // useEffect runa solo al mount iniziale, quando profile era ancora vuoto).
+      window.dispatchEvent(new CustomEvent("fp-onboarding-done"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore");
       setSaving(false);
@@ -186,6 +193,17 @@ export function WelcomeOnboarding() {
             <p className="text-[11px] text-[var(--fg-muted)] uppercase tracking-wider font-medium">
               Aiutaci a capire chi usa Piggybird (opzionale)
             </p>
+
+            <Field label="Città">
+              <input
+                type="text"
+                value={city}
+                onChange={(e) => setCity(e.target.value)}
+                placeholder="Es. Milano, Paris, Berlin…"
+                maxLength={64}
+                className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
+              />
+            </Field>
 
             <Field label="Data di nascita">
               <input

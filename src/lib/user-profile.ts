@@ -11,6 +11,7 @@ const KEYS = {
   name: "user.name",
   email: "user.email",
   countries: "user.countries",
+  city: "user.city",
   birthDate: "user.birthDate",
   familyStatus: "user.familyStatus",
   profession: "user.profession",
@@ -27,6 +28,7 @@ const DEFAULT_PROFILE: UserProfile = {
   name: "",
   email: "",
   countries: [],
+  city: "",
   birthDate: "",
   familyStatus: "",
   profession: "",
@@ -62,6 +64,7 @@ export async function getUserProfile(): Promise<UserProfile> {
     name: map.get(KEYS.name) ?? DEFAULT_PROFILE.name,
     email: map.get(KEYS.email) ?? DEFAULT_PROFILE.email,
     countries: parseJsonArray(map.get(KEYS.countries)),
+    city: map.get(KEYS.city) ?? DEFAULT_PROFILE.city,
     birthDate: map.get(KEYS.birthDate) ?? DEFAULT_PROFILE.birthDate,
     familyStatus: map.get(KEYS.familyStatus) ?? DEFAULT_PROFILE.familyStatus,
     profession: map.get(KEYS.profession) ?? DEFAULT_PROFILE.profession,
@@ -80,6 +83,7 @@ export async function saveUserProfile(input: Partial<UserProfile>): Promise<void
   if (input.name !== undefined) ops.push(upsertSetting(KEYS.name, input.name.trim()));
   if (input.email !== undefined) ops.push(upsertSetting(KEYS.email, input.email.trim()));
   if (input.countries !== undefined) ops.push(upsertSetting(KEYS.countries, JSON.stringify(input.countries)));
+  if (input.city !== undefined) ops.push(upsertSetting(KEYS.city, input.city.trim()));
   if (input.birthDate !== undefined) ops.push(upsertSetting(KEYS.birthDate, input.birthDate.trim()));
   if (input.familyStatus !== undefined) ops.push(upsertSetting(KEYS.familyStatus, input.familyStatus.trim()));
   if (input.profession !== undefined) ops.push(upsertSetting(KEYS.profession, input.profession.trim()));

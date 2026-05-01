@@ -6,6 +6,7 @@ import {
   computeCallCostEur,
   type AIModelId,
 } from "./ai-pricing";
+import { buildUserContext } from "./ai-context";
 
 const PROVIDER_KEY = "anthropic";
 
@@ -34,6 +35,11 @@ export type ClaudeCallOptions = {
   maxTokens?: number;
   /** Se true, NON registra in AIUsage (es. per test credential). */
   skipUsageTracking?: boolean;
+  /** Se true, prepende automaticamente buildUserContext() al system prompt.
+   *  Usare per feature di insight/osservazione dove conta personalizzare il
+   *  tono e l'angolo. NON usare per task narrowly funzionali (es. parsing
+   *  CSV, mapping colonne) dove il context aggiunge solo token sprecati. */
+  includeUserContext?: boolean;
 };
 
 export type ClaudeCallResult = {
@@ -135,6 +141,23 @@ export async function callClaude(
   const model: AIModelId = opts.model ?? "sonnet";
   const client = new Anthropic({ apiKey });
 
+  // Prepende il contesto utente al system prompt se richiesto. Fail-safe:
+  // se buildUserContext fallisce per qualunque motivo, procede con il
+  // system originale (la feature AI non si rompe per un errore di profilo).
+  let systemPrompt = opts.system;
+  if (opts.includeUserContext) {
+    try {
+      const userContext = await buildUserContext();
+      if (userContext) {
+        systemPrompt = systemPrompt
+          ? `${userContext}\n\n---\n\n${systemPrompt}`
+          : userContext;
+      }
+    } catch {
+      // ignora, usa system originale
+    }
+  }
+
   let result: ClaudeCallResult | null = null;
   let errorMsg: string | null = null;
   let status: "ok" | "error" | "rate_limited" = "ok";
@@ -143,7 +166,7 @@ export async function callClaude(
     const resp = await client.messages.create({
       model: AI_MODELS[model],
       max_tokens: opts.maxTokens ?? 1024,
-      system: opts.system,
+      system: systemPrompt,
       messages: opts.messages,
     });
     const text = resp.content

@@ -53,15 +53,16 @@ export default async function RootLayout({
   return (
     <html
       lang="it"
-      data-theme="dark"
+      data-theme="light"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
       <body className="min-h-screen">
         {/* Theme init è gestito da PreferencesBootstrap (client). Default
-            `data-theme="dark"` è già sull'html sopra; un FOUC minimo sul
-            theme light dura fino all'hydration. Usare `<script>` o
-            `<Script beforeInteractive>` qui darebbe warning React 19. */}
+            `data-theme="light"` è già sull'html sopra; un FOUC minimo sul
+            theme dark dura fino all'hydration per gli utenti che hanno
+            scelto dark. Usare `<script>` o `<Script beforeInteractive>` qui
+            darebbe warning React 19. */}
         {/* Top progress bar: feedback immediato al click su Link, indipendente
             da loading.tsx. Risolve la sensazione di "app freezata" in dev mode
             quando Next.js compila on-demand. */}

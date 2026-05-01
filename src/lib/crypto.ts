@@ -3,21 +3,28 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 /**
  * Cifratura simmetrica AES-256-GCM.
  *
- * - Chiave da APP_MASTER_KEY (.env, 32 byte hex)
- * - IV random per ogni cifratura (96 bit, raccomandato per GCM)
- * - Auth tag verifica integrità: se il ciphertext o IV vengono modificati
- *   la decifratura fallisce (no integrity → error)
+ * Strategia chiave master:
+ *   1. APP_MASTER_KEY env var (32 byte hex) — usata se presente (dev, CI)
+ *   2. Setting `system.masterKey` nel DB locale — generata al primo avvio
+ *      tramite `ensureMasterKey()` se la env var non esiste. Ogni utente ha
+ *      la sua chiave personale, isolata dal nostro build.
  *
- * NB: chiave perduta → dati illeggibili. Backup di .env in posto sicuro.
+ * NB: chiave perduta → dati cifrati (API credentials) illeggibili.
+ * L'utente perde solo le credenziali API, non i suoi movimenti/conti.
+ *
+ * - IV random per ogni cifratura (96 bit, raccomandato per GCM)
+ * - Auth tag verifica integrità: se ciphertext o IV vengono modificati
+ *   la decifratura fallisce (no integrity → error)
  */
 
 const ALGO = "aes-256-gcm";
+const MASTER_KEY_SETTING = "system.masterKey";
 
 function getKey(): Buffer {
   const hex = process.env.APP_MASTER_KEY;
   if (!hex) {
     throw new Error(
-      "APP_MASTER_KEY non configurata. Aggiungila in .env (32 byte hex).",
+      "APP_MASTER_KEY non disponibile. Chiamare ensureMasterKey() al boot prima di usare encrypt/decrypt.",
     );
   }
   if (hex.length !== 64) {
@@ -26,6 +33,37 @@ function getKey(): Buffer {
     );
   }
   return Buffer.from(hex, "hex");
+}
+
+/**
+ * Boot-time: assicura che `process.env.APP_MASTER_KEY` sia disponibile.
+ * Order: env var (dev/CI) → DB Setting → genera nuova + salva in DB.
+ *
+ * Chiamare UNA VOLTA all'avvio (in `instrumentation.ts`). Idempotente.
+ *
+ * Lazy import di prisma per evitare circular import (crypto.ts → prisma →
+ * adapter → ...).
+ */
+export async function ensureMasterKey(): Promise<void> {
+  if (process.env.APP_MASTER_KEY && process.env.APP_MASTER_KEY.length === 64) {
+    return;
+  }
+  const { prisma } = await import("./prisma");
+  const existing = await prisma.setting
+    .findUnique({ where: { key: MASTER_KEY_SETTING } })
+    .catch(() => null);
+  if (existing?.value && existing.value.length === 64) {
+    process.env.APP_MASTER_KEY = existing.value;
+    return;
+  }
+  // Genera nuova chiave 32 byte hex (256 bit)
+  const fresh = randomBytes(32).toString("hex");
+  await prisma.setting.upsert({
+    where: { key: MASTER_KEY_SETTING },
+    create: { key: MASTER_KEY_SETTING, value: fresh },
+    update: { value: fresh },
+  });
+  process.env.APP_MASTER_KEY = fresh;
 }
 
 export type EncryptedField = {

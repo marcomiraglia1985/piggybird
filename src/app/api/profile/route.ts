@@ -13,6 +13,7 @@ const PostSchema = z.object({
     .union([z.string().trim().email("Email non valida"), z.literal("")])
     .optional(),
   countries: z.array(z.string().trim().min(1)).optional(),
+  city: z.string().trim().max(64).optional(),
   birthDate: z
     .union([z.string().trim().regex(/^\d{4}-\d{2}-\d{2}$/, "Data invalida"), z.literal("")])
     .optional(),

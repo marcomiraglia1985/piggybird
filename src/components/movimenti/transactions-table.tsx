@@ -36,7 +36,7 @@ type Tx = {
   estate?: { id: string; name: string; emoji: string | null } | null;
 };
 
-type Account = { id: string; name: string; emoji: string | null };
+type Account = { id: string; name: string; type: string; emoji: string | null };
 type Category = {
   id: string;
   emoji: string;

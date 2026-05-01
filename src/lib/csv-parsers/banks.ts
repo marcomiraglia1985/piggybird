@@ -13,6 +13,7 @@ export type DetectedFormat =
   | "revolut"
   | "fineco"
   | "bnp"
+  | "n26"
   | "unknown";
 
 export type SupportedBank = {
@@ -25,4 +26,5 @@ export const SUPPORTED_BANKS: SupportedBank[] = [
   { format: "revolut", name: "Revolut", flag: "💳" },
   { format: "fineco", name: "Fineco", flag: "🇮🇹" },
   { format: "bnp", name: "BNP Paribas", flag: "🇫🇷" },
+  { format: "n26", name: "N26", flag: "🇩🇪" },
 ];

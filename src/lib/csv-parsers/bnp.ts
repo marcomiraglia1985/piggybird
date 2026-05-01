@@ -12,6 +12,12 @@ import type { ParsedRow, ParserResult } from "./types";
  *           | Libelle operation | Montant operation | Pointage operation
  *           | Commentaire operation
  *   Riga 3+: dati (date DD-MM-YYYY, importi numerici, decimale ".")
+ *
+ * BNP categorizza già le tx nella colonna "Sous Categorie operation".
+ * Quella categoria viene passata downstream tramite `rawType` → l'auto-
+ * categorize AI la userà come segnale forte. Il parser NON applica regole
+ * di matching su nomi merchant (es. CARREFOUR → 🍎): quella sarebbe
+ * opinione personale e violerebbe la regola "universal app".
  */
 
 const HEADERS = [
@@ -56,46 +62,6 @@ function parseAmount(v: string): number {
   return Number.isFinite(n) ? n : 0;
 }
 
-/**
- * Regole specifiche BNP per spese Parigi (e dintorni).
- * Match in ordine: vince la prima.
- */
-const BNP_RULES: Array<{ pattern: RegExp; emoji: string; isTransfer?: boolean }> = [
-  // Electricità Parigi
-  { pattern: /\bEDF\b|\bENGIE\b|TOTAL ENERGIES/i, emoji: "💡🇫🇷" },
-  // Telefonia Parigi
-  { pattern: /\bSFR\b|\bORANGE\b|\bBOUYGUES\b|FREE\s*MOBILE|FREE\s*TELECOM|FREE\s*FRANCE/i, emoji: "☎️🇫🇷" },
-  // Affitto Parigi (in ENTRATA — qualcuno ti paga)
-  { pattern: /loyer|location|rent\b/i, emoji: "🏠🇫🇷" },
-  // Tasse / sindacato condominiale Parigi
-  { pattern: /SYND[.\s]|TRESOR\s*PUBLIC|IMPOTS|TAXE FONC/i, emoji: "⚖️🇫🇷" },
-  // Banca / assicurazione Parigi
-  { pattern: /CARDIF|ASSURANCE|ESPRIT LIBRE|FRAIS BANC|COMMISSION|COTISATION/i, emoji: "🏦🇫🇷" },
-  // Alimentari
-  { pattern: /CARREFOUR|MONOPRIX|FRANPRIX|G20|CASINO|LIDL|AUCHAN|LECLERC|INTERMARCHE/i, emoji: "🍎" },
-  // Trasporti Parigi
-  { pattern: /\bSNCF\b|\bRATP\b|\bUBER\b|\bLIME\b|VELIB|NAVIGO/i, emoji: "🚌" },
-];
-
-/**
- * Mapping fallback dalla "Sous Categorie operation" di BNP alle nostre categorie.
- */
-const BNP_SUBCATEGORY_MAP: Record<string, string> = {
-  "Électricité, gaz": "💡🇫🇷",
-  Téléphone: "☎️🇫🇷",
-  Internet: "☎️🇫🇷",
-  Loyer: "🏠🇫🇷",
-  "Frais bancaires": "🏦🇫🇷",
-  Assurances: "🏦🇫🇷",
-  Alimentation: "🍎",
-  Restaurant: "🍝",
-  "Café, snack, fast-food": "☕",
-  Transports: "🚌",
-  Carburant: "🛢️",
-  "Habillement, chaussures": "👕",
-  Santé: "💊",
-};
-
 export function parseBNP(content: string): ParserResult {
   const parsedRaw = Papa.parse<string[]>(content, {
     header: false,
@@ -121,6 +87,7 @@ export function parseBNP(content: string): ParserResult {
   const header = rawRows[headerIdx];
   const idx = (name: string) => header.indexOf(name);
   const cDate = idx("Date operation");
+  const cCat = idx("Categorie operation");
   const cSub = idx("Sous Categorie operation");
   const cLib = idx("Libelle operation");
   const cAmt = idx("Montant operation");
@@ -139,24 +106,18 @@ export function parseBNP(content: string): ParserResult {
     const amount = parseAmount(r[cAmt] ?? "");
     if (amount === 0) continue;
 
+    const cat = (r[cCat] ?? "").trim();
     const sub = (r[cSub] ?? "").trim();
     const lib = (r[cLib] ?? "").trim();
     const comm = (r[cComm] ?? "").trim();
 
-    // Description: prima 60 char di Libelle (BNP è verboso)
+    // Description short (truncate libelle verboso a 60 char)
     const shortDesc = lib.length > 60 ? lib.slice(0, 60).trim() + "…" : lib;
 
-    // Apply rules
-    let suggestedCategoryEmoji: string | null = null;
-    for (const rule of BNP_RULES) {
-      if (rule.pattern.test(lib)) {
-        suggestedCategoryEmoji = rule.emoji;
-        break;
-      }
-    }
-    if (!suggestedCategoryEmoji && sub && BNP_SUBCATEGORY_MAP[sub]) {
-      suggestedCategoryEmoji = BNP_SUBCATEGORY_MAP[sub];
-    }
+    // Categoria BNP-fornita: passata in rawType così auto-categorize AI la
+    // vede come signal forte (es. "Alimentation > Restaurants" → AI sa che è
+    // ristorante senza ambiguità). Format: "Categorie > Sous Categorie".
+    const bankCategory = [cat, sub].filter(Boolean).join(" > ");
 
     const dateStr = date.toISOString().slice(0, 10);
     const externalId = [dateStr, amount.toFixed(2), shortDesc.slice(0, 24)].join("|");
@@ -166,9 +127,9 @@ export function parseBNP(content: string): ParserResult {
       date: dateStr,
       amount,
       description: shortDesc,
-      rawType: sub,
+      rawType: bankCategory || undefined,
       suggestedAccount: "BNP Paribas",
-      suggestedCategoryEmoji,
+      suggestedCategoryEmoji: null,
       currency: "EUR",
       notes: lib + (comm ? ` — ${comm}` : ""),
     });

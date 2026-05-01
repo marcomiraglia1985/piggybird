@@ -31,7 +31,7 @@ const DEFAULTS: Preferences = {
   dateFormat: "dd-mmm-yy",
   numFormat: "it",
   timezone: "auto",
-  themeMode: "dark",
+  themeMode: "light",
   themeDarkFrom: "20:00",
   themeDarkTo: "07:00",
 };

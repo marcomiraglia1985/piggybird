@@ -96,13 +96,16 @@ export function AiFeaturesSection() {
       </CardHeader>
       <CardContent>
         <p className="text-xs text-[var(--fg-muted)] leading-relaxed">
-          Connetti la tua <strong>Anthropic API key</strong> per abilitare
-          feature AI on-demand: auto-categorizzazione movimenti, analisi
-          portfolio, anomaly detection e altro. Ogni feature ha un bottone{" "}
+          Connetti la tua <strong>Anthropic API key</strong> per abilitare le
+          feature <strong>Moneybird Insights</strong> on-demand:
+          auto-categorizzazione dei movimenti, osservazioni sul portfolio,
+          rilevamento anomalie e altro. Ogni feature ha un bottone{" "}
           <span className="inline-flex items-center gap-1 text-orange-300">
             <Sparkles className="size-3" />
           </span>{" "}
-          dedicato — niente token bruciati senza un tuo click esplicito.
+          dedicato — niente token bruciati senza un tuo click esplicito. Le
+          osservazioni sono educative e basate sui tuoi dati locali, non
+          costituiscono consulenza finanziaria.
         </p>
 
         <div className="mt-3 text-[11px] text-[var(--fg-subtle)] inline-flex items-center gap-1.5">

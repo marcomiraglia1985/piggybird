@@ -25,8 +25,14 @@ model Account {
   interestRateAnnual Float?
   /** Note libere (banca, IBAN, vincolo, ecc.) */
   notes              String?
+  /** Provider esterno (per gating delle integrazioni API in Impostazioni):
+   *  "generic" = nessun API attivo (default — banca tradizionale, contante)
+   *  "binance" = conto Binance, mostra setup API in Impostazioni
+   *  "revolut-x" = conto Revolut X, mostra setup API
+   *  Futuri: "n26", "fineco-psd2", "trade-republic", ecc. */
+  provider           String   @default("generic")
   /** JSON-encoded array di membri per i conti type="friendsplit".
-   *  Formato: '[{"name":"Marco Miraglia"}, {"name":"Davide Caselli"}]'
+   *  Formato: '[{"name":"Mario Rossi"}, {"name":"Luca Bianchi"}]'
    *  Il primo membro è convenzionalmente l'utente proprietario dell'app.
    *  Null per conti non-friendsplit. */
   membersJson        String?

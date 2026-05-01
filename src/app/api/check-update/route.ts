@@ -3,8 +3,10 @@ import pkg from "../../../../package.json";
 import { getLatestRelease } from "@/lib/github";
 
 export const runtime = "nodejs";
-// Cache 1h: GitHub rate limit ~5k req/h con auth, ma non serve hammerare.
-export const revalidate = 3600;
+// No cache: la version-badge polla già lato client ogni 6h (vedi
+// version-badge.tsx). Server cache di 1h causava problemi: app installata
+// pre-rilascio non vedeva mai la release nuova fino al restart + 1h.
+export const dynamic = "force-dynamic";
 
 /**
  * Confronta la versione corrente (da package.json) con l'ultima release

@@ -281,6 +281,7 @@ function NavLink({
         className={cn(baseClass, "text-left w-full")}
         title={item.disabledTitle ?? "Disabilitato"}
         aria-disabled="true"
+        data-tutorial={TUTORIAL_TARGETS[item.href]}
       >
         {innerContent}
       </button>
@@ -288,11 +289,24 @@ function NavLink({
   }
 
   return (
-    <Link href={item.href} className={baseClass}>
+    <Link
+      href={item.href}
+      className={baseClass}
+      data-tutorial={TUTORIAL_TARGETS[item.href]}
+    >
       {innerContent}
     </Link>
   );
 }
+
+/** Mappa href → identificatore tutorial. Usato dal WelcomeTutorial per
+ *  ancorare i tooltip ai sidebar items giusti. */
+const TUTORIAL_TARGETS: Record<string, string | undefined> = {
+  "/movimenti": "movimenti",
+  "/conti": "conti",
+  "/import": "import",
+  "/impostazioni": "impostazioni",
+};
 
 /** Badge alert con tooltip portalato (esce dall'overflow della sidebar). */
 function AlertBadge({ count, title, extraClass }: { count: number; title: string; extraClass?: string }) {
@@ -391,6 +405,7 @@ function SortableNavLink({ item, pathname }: { item: NavItem; pathname: string }
       </button>
       <Link
         href={item.href}
+        data-tutorial={TUTORIAL_TARGETS[item.href]}
         className={cn(
           "relative flex items-center gap-3 rounded-lg px-3 py-2 pr-7 text-sm font-medium transition-colors flex-1",
           active

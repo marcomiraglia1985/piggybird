@@ -245,30 +245,6 @@ export default async function InvestimentiPage() {
             );
           })}
 
-          {!investments.some(
-            (i) => i.platform === "Revolut X" && i.type === "crypto",
-          ) && (
-            <Link
-              href="/investimenti/crypto-revolut"
-              className="block group relative overflow-hidden rounded-2xl border border-dashed border-[var(--border-strong)] bg-[var(--surface)]/40 p-5 transition-colors hover:border-violet-500/40 hover:bg-violet-500/[0.04]"
-            >
-              <div className="flex items-center justify-between mb-3">
-                <div className="size-10 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-xl">
-                  🚀
-                </div>
-                <span className="text-[10px] uppercase tracking-widest text-[var(--fg-subtle)]">
-                  Revolut X
-                </span>
-              </div>
-              <div className="text-sm text-[var(--fg-muted)]">Crypto Revolut X</div>
-              <div className="text-2xl font-semibold tabular-nums mt-1 text-[var(--fg-subtle)]">
-                Da configurare
-              </div>
-              <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-violet-400">
-                <span>+ aggiungi posizioni manuali</span>
-              </div>
-            </Link>
-          )}
         </div>
       </div>
 

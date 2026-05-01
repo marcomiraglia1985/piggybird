@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 import { parseRevolutCSV, isRevolut } from "./revolut";
 import { parseFineco, isFineco } from "./fineco";
 import { parseBNP, isBNP } from "./bnp";
+import { parseN26, isN26 } from "./n26";
 import type { ParserResult } from "./types";
 import Papa from "papaparse";
 import { parseUniversalWithFallback } from "@/lib/universal-parser";
@@ -44,6 +45,11 @@ export function parseAny(content: string): ParserResult {
 
   if (isRevolut(headers)) {
     return parseRevolutCSV(content);
+  }
+
+  // N26: header sulla prima riga, formato CSV standard quotato
+  if (isN26(headers)) {
+    return parseN26(content);
   }
 
   // Fineco / BNP: header non sulla prima riga, serve guardare le prime ~25

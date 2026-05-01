@@ -37,6 +37,7 @@ import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
 import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
 import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
+import { WelcomeTutorial } from "@/components/dashboard/welcome-tutorial";
 import { getFreezeState } from "@/lib/account-freeze";
 
 export default async function Dashboard() {
@@ -128,7 +129,9 @@ export default async function Dashboard() {
     });
 
   return (
-    <DashboardShell
+    <>
+      <WelcomeTutorial />
+      <DashboardShell
       accountsFrozen={freezeState.frozen}
       kpiHero={
         <KpiHero
@@ -309,6 +312,7 @@ export default async function Dashboard() {
             ),
           },
       ]}
-    />
+      />
+    </>
   );
 }

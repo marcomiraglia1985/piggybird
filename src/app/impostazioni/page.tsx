@@ -1,4 +1,5 @@
 import pkg from "../../../package.json";
+import Link from "next/link";
 import { BinanceConnect } from "@/components/impostazioni/binance-connect";
 import { RevolutXConnect } from "@/components/impostazioni/revolut-x-connect";
 import { StockTradesImport } from "@/components/impostazioni/stock-trades-import";
@@ -8,10 +9,23 @@ import { PreferenzeSection } from "@/components/impostazioni/preferenze-section"
 import { SistemaSection } from "@/components/impostazioni/sistema-section";
 import { DatiSection } from "@/components/impostazioni/dati-section";
 import { NotificheSection } from "@/components/impostazioni/notifiche-section";
+import { prisma } from "@/lib/prisma";
+import { getActiveIntegrationProviders } from "@/lib/account-providers";
+import { Plus } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function ImpostazioniPage() {
+  // Gating integrazioni: mostra solo card per provider che l'utente ha
+  // effettivamente collegato a 1+ account.
+  const accounts = await prisma.account.findMany({
+    select: { provider: true },
+    where: { active: true },
+  });
+  const activeProviders = getActiveIntegrationProviders(accounts);
+  const hasBinance = activeProviders.some((p) => p.id === "binance");
+  const hasRevolutX = activeProviders.some((p) => p.id === "revolut-x");
+  const anyIntegration = hasBinance || hasRevolutX;
   return (
     <div className="space-y-8">
       <header>
@@ -40,15 +54,35 @@ export default async function ImpostazioniPage() {
 
       <Section title="Integrazioni">
         <div className="surface p-5 divide-y divide-[var(--border)]/50 space-y-0">
-          <div className="pb-5">
-            <BinanceConnect />
-          </div>
-          <div className="py-5">
-            <RevolutXConnect />
-          </div>
-          <div className="pt-5">
+          {hasBinance && (
+            <div className={anyIntegration ? "pb-5" : ""}>
+              <BinanceConnect />
+            </div>
+          )}
+          {hasRevolutX && (
+            <div className={hasBinance ? "py-5" : "pb-5"}>
+              <RevolutXConnect />
+            </div>
+          )}
+          <div className={anyIntegration ? "pt-5" : ""}>
             <StockTradesImport />
           </div>
+          {!anyIntegration && (
+            <div className="mt-5 pt-5 border-t border-[var(--border)]/50">
+              <p className="text-xs text-[var(--fg-muted)] leading-relaxed">
+                Nessuna integrazione API attiva. Per attivare il sync automatico
+                di Binance o Revolut X,{" "}
+                <Link
+                  href="/conti/nuovo?type=investment"
+                  className="text-violet-700 dark:text-violet-300 hover:underline inline-flex items-center gap-1"
+                >
+                  crea un conto investimento
+                  <Plus className="size-3" />
+                </Link>
+                {" "}e seleziona il provider corrispondente.
+              </p>
+            </div>
+          )}
         </div>
       </Section>
 

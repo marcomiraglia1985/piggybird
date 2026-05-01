@@ -11,6 +11,13 @@ export async function GET(
   const { searchParams } = new URL(req.url);
   const city = searchParams.get("city");
   const country = searchParams.get("country");
-  const stats = await getArchetypeStats(archetypeId, city, country);
+  const tvRaw = searchParams.get("testVersion");
+  const testVersion = tvRaw ? parseInt(tvRaw, 10) : 0;
+  const stats = await getArchetypeStats(
+    archetypeId,
+    city,
+    country,
+    isFinite(testVersion) && testVersion > 0 ? testVersion : 0,
+  );
   return NextResponse.json({ stats });
 }

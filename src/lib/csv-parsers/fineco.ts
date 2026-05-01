@@ -24,34 +24,14 @@ const FINECO_HEADERS = [
 ];
 
 /**
- * Regole deterministiche per pattern Fineco. Applicate prima
- * dell'auto-categorize dallo storico (vincono).
+ * Il CSV Fineco non fornisce una colonna categoria — solo Descrizione e
+ * Descrizione_Completa. Il parser non applica regole di matching su
+ * pattern testuali (es. "stipendio" → 💼, "cash park" → transfer):
+ * sarebbe opinione personale e violerebbe la regola "universal app".
+ *
+ * Le descrizioni vengono passate downstream e l'auto-categorize AI le
+ * userà insieme ai pattern personali dell'utente per categorizzare.
  */
-const FINECO_RULES: Array<{
-  pattern: RegExp;
-  emoji: string;
-  isTransfer?: boolean;
-  note?: string;
-}> = [
-  // Banca / commissioni
-  { pattern: /canone\s+mensile/i, emoji: "🏦" },
-  { pattern: /imposta\s+(di\s+)?bollo/i, emoji: "🏦" },
-  { pattern: /commission|spese\s+conto/i, emoji: "🏦" },
-
-  // CashPark — sottoscrizione = transfer Fineco → CashPark
-  { pattern: /sottoscrizione\s*cash[\s-]?park/i, emoji: "↔️", isTransfer: true, note: "Transfer verso Fineco Cash Park" },
-
-  // CashPark — accredito a scadenza = transfer + interessi (riga unica nel CSV)
-  {
-    pattern: /accr\.?\s*cash[\s-]?park|accredito.*cash[\s-]?park/i,
-    emoji: "↔️",
-    isTransfer: true,
-    note: "Rimborso CashPark (capitale + interessi netti) — verifica se duplica righe esistenti",
-  },
-
-  // Stipendio
-  { pattern: /stipendio|salar(?:y|io)/i, emoji: "💼" },
-];
 
 export function isFineco(rawRows: string[][]): boolean {
   // Cerca una riga che matcha gli header Fineco entro le prime 25 righe
@@ -165,20 +145,6 @@ export function parseFineco(content: string): ParserResult {
     const desc = (r[cDesc] ?? "").trim();
     const descFull = (r[cDescFull] ?? "").trim();
     const description = desc || descFull.slice(0, 80);
-    const fullText = `${desc} ${descFull}`;
-
-    // Applica regole pattern Fineco
-    let suggestedCategoryEmoji: string | null = null;
-    let isTransfer = false;
-    let extraNote: string | null = null;
-    for (const rule of FINECO_RULES) {
-      if (rule.pattern.test(fullText)) {
-        suggestedCategoryEmoji = rule.emoji;
-        if (rule.isTransfer) isTransfer = true;
-        if (rule.note) extraNote = rule.note;
-        break;
-      }
-    }
 
     const dateStr = date.toISOString().slice(0, 10);
     const externalId = [dateStr, amount.toFixed(2), description.slice(0, 24)].join("|");
@@ -190,14 +156,9 @@ export function parseFineco(content: string): ParserResult {
       description,
       rawType: desc,
       suggestedAccount: "Fineco",
-      suggestedCategoryEmoji,
-      isTransfer,
+      suggestedCategoryEmoji: null,
       currency: "EUR",
-      notes: extraNote
-        ? extraNote + (descFull && descFull !== desc ? ` — ${descFull}` : "")
-        : descFull && descFull !== desc
-          ? descFull
-          : null,
+      notes: descFull && descFull !== desc ? descFull : null,
     });
   }
 

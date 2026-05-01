@@ -13,6 +13,17 @@ export async function register() {
   if (!process.env.SENTRY_DSN) return; // skip se non configurato
 
   if (process.env.NEXT_RUNTIME === "nodejs") {
+    // Boot: assicura che APP_MASTER_KEY sia disponibile. Su build distribuita
+    // (no env var settata), la chiave viene generata al primo avvio e
+    // salvata nel DB locale dell'utente.
+    try {
+      const { ensureMasterKey } = await import("./src/lib/crypto");
+      await ensureMasterKey();
+    } catch {
+      // Se DB non raggiungibile (primissimo boot pre-migration), riproveremo
+      // alla prima chiamata effettiva di encrypt/decrypt
+    }
+
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       // Più basso = meno noise; in beta vogliamo TUTTI gli errori reali.
