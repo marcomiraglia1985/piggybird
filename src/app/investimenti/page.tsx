@@ -272,33 +272,13 @@ export default async function InvestimentiPage() {
         </div>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Stato integrazioni</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ul className="space-y-1.5 text-sm text-[var(--fg-muted)]">
-            <li>
-              ✅ <strong>Crypto Binance</strong> — sync API live (saldi spot/earn/funding,
-              prezzi EUR ufficiali). Cost basis aggregato manuale.
-            </li>
-            <li>
-              ✅ <strong>Crypto Revolut X</strong> — sync API live via Ed25519 (read-only,
-              endpoint <code className="text-xs">revx.revolut.com/api/1.0/balances</code>).
-              Prezzi EUR via ticker pubblico Binance. Cost basis manuale per asset.
-            </li>
-            <li>
-              ✅ <strong>Stocks Trading Revolut</strong> — prezzi live via Yahoo Finance
-              (refresh manuale dal pulsante &quot;Sync tutto&quot;). Cost basis FIFO da CSV
-              import + FX ECB. Allineato a Revolut a livello per-ticker.
-            </li>
-          </ul>
-          <p className="mt-3 text-[11px] text-[var(--fg-subtle)]">
-            Pulsante &quot;Sync tutto&quot; in alto lancia tutti i sync attivi in parallelo.
-            FX EUR/USD da ECB reference rate.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="text-[10px] text-[var(--fg-subtle)] leading-relaxed pt-2">
+        <span className="opacity-70">Note tecniche:</span>{" "}
+        Crypto Binance via API (saldi spot/earn/funding, prezzi EUR ufficiali) ·
+        Crypto Revolut X via API Ed25519 read-only (prezzi EUR via Binance public ticker) ·
+        Stocks Revolut prezzi via Yahoo (refresh manuale) · Cost basis FIFO da CSV +
+        FX ECB. Sync tutto = lancia tutti gli active sync in parallelo.
+      </div>
     </div>
   );
 }
