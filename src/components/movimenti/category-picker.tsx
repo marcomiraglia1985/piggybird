@@ -184,6 +184,17 @@ export function CategoryPicker({
             )}
           >
             {isInput ? `${selected.emoji} ${selected.name}` : selected.name}
+            {(() => {
+              const est = selected.estateId
+                ? estates?.find((e) => e.id === selected.estateId)
+                : null;
+              if (!est) return null;
+              return (
+                <span className="text-[var(--fg-subtle)] ml-1">
+                  · {est.emoji ?? "🏠"} {est.name}
+                </span>
+              );
+            })()}
           </span>
         ) : isInput ? (
           <span className="truncate text-[var(--fg-subtle)]">— Nessuna —</span>

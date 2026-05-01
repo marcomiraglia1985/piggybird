@@ -92,7 +92,9 @@ export default async function MovimentiPage({
       ...where,
       orderBy: { date: "desc" },
       take: limit,
-      include: { account: true, category: true, estate: true },
+      // Includiamo anche l'estate della category (per mostrare "🏠 Affitto · Paris"
+      // sulle tx categorizzate come estate-linked anche se non hanno tx.estateId).
+      include: { account: true, category: { include: { estate: true } }, estate: true },
     }),
     prisma.account.findMany({ where: { active: true }, orderBy: { displayOrder: "asc" } }),
     // Tutte le categorie (anche archiviate). Le archiviate vanno in fondo
