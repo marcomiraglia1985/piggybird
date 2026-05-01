@@ -931,15 +931,28 @@ export function NewTransactionDialog({
                 <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
                   Importo (EUR)
                 </label>
-                <input
-                  type="number"
-                  step="any"
-                  min="0"
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="0.00"
-                  className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm tabular-nums focus:outline-none focus:border-violet-500/50"
-                />
+                <div className="relative">
+                  {/* Prefix visivo "−" per uscite (il valore numerico resta
+                       positivo, il signed amount è calcolato server-side via
+                       direction). Mostrato anche con input vuoto come hint. */}
+                  <span
+                    className={`pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm tabular-nums font-medium ${
+                      direction === "out" ? "text-rose-400" : "text-emerald-400"
+                    }`}
+                    aria-hidden
+                  >
+                    {direction === "out" ? "−" : "+"}
+                  </span>
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    value={amount}
+                    onChange={(e) => setAmount(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] pl-7 pr-3 text-sm tabular-nums focus:outline-none focus:border-violet-500/50"
+                  />
+                </div>
               </div>
             </div>
 
