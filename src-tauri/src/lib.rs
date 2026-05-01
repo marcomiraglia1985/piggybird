@@ -2,12 +2,17 @@ use std::fs;
 use std::io::Write;
 use std::net::TcpStream;
 use std::path::PathBuf;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Manager, RunEvent};
+use tauri_plugin_shell::process::CommandChild;
 use tauri_plugin_shell::ShellExt;
 
 static LOG_PATH: OnceLock<PathBuf> = OnceLock::new();
+
+/// Handle del Node sidecar (server.js Next.js standalone). Salvato in static
+/// così possiamo killarlo quando l'app esce — altrimenti resta orphan.
+static SIDECAR_CHILD: OnceLock<Mutex<Option<CommandChild>>> = OnceLock::new();
 
 fn log_line(line: &str) {
     if let Some(p) = LOG_PATH.get() {
@@ -101,8 +106,22 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|_app_handle, event| {
+            if matches!(event, RunEvent::ExitRequested { .. } | RunEvent::Exit) {
+                if let Some(mutex) = SIDECAR_CHILD.get() {
+                    if let Ok(mut guard) = mutex.lock() {
+                        if let Some(child) = guard.take() {
+                            match child.kill() {
+                                Ok(_) => log_line("[exit] sidecar Node killed cleanly"),
+                                Err(e) => log_line(&format!("[exit] sidecar kill error: {}", e)),
+                            }
+                        }
+                    }
+                }
+            }
+        });
 }
 
 fn wait_and_navigate(app: AppHandle) {
@@ -204,9 +223,14 @@ async fn bootstrap_and_serve(
         .env("NODE_ENV", "production")
         .current_dir(standalone_dir);
 
-    let (mut rx, _child) = server_cmd
+    let (mut rx, child) = server_cmd
         .spawn()
         .map_err(|e| format!("sidecar spawn failed: {}", e))?;
+    // Salva il handle in static così l'exit handler può killarlo
+    let mutex = SIDECAR_CHILD.get_or_init(|| Mutex::new(None));
+    if let Ok(mut guard) = mutex.lock() {
+        *guard = Some(child);
+    }
 
     // Pump stdout/stderr → log Tauri (visibile in console se runa con `cargo tauri dev`)
     while let Some(event) = rx.recv().await {
