@@ -5,6 +5,9 @@ import { prisma } from "./prisma";
 import { decrypt } from "./crypto";
 import type { ParseResult, StockEvent } from "./broker-parsers/types";
 import { AI_MODELS, computeCallCostEur } from "./ai-pricing";
+import { notifyDevOfNewTemplate } from "./github";
+import { getUserProfile } from "./user-profile";
+import pkg from "../../package.json";
 
 /**
  * Universal broker CSV parser via AI fallback. Analogo a `universal-parser.ts`
@@ -330,6 +333,7 @@ export async function parseAnyBrokerWithFallback(csv: string): Promise<ParseResu
   // AI inference
   try {
     const { mapping, costEur } = await inferBrokerTemplateWithAI(sampleRows);
+    const sampleHeadersJoined = headers.slice(0, 20).join(" | ");
     await prisma.parserTemplate
       .upsert({
         where: { signature },
@@ -338,7 +342,7 @@ export async function parseAnyBrokerWithFallback(csv: string): Promise<ParseResu
           kind: "broker",
           bankName: mapping.brokerName,
           mapping: JSON.stringify(mapping),
-          sampleHeaders: headers.slice(0, 20).join(" | "),
+          sampleHeaders: sampleHeadersJoined,
           usageCount: 1,
           aiCostEur: costEur,
         },
@@ -346,11 +350,28 @@ export async function parseAnyBrokerWithFallback(csv: string): Promise<ParseResu
           kind: "broker",
           bankName: mapping.brokerName,
           mapping: JSON.stringify(mapping),
-          sampleHeaders: headers.slice(0, 20).join(" | "),
+          sampleHeaders: sampleHeadersJoined,
           aiCostEur: costEur,
         },
       })
       .catch(() => null);
+
+    // Notifica dev team async (fire-and-forget). Non bloccare l'import.
+    void (async () => {
+      try {
+        const profile = await getUserProfile();
+        await notifyDevOfNewTemplate({
+          kind: "broker",
+          name: mapping.brokerName,
+          signature,
+          sampleHeaders: sampleHeadersJoined,
+          mapping,
+          userEmail: profile.email || undefined,
+          appVersion: (pkg as { version?: string }).version,
+        });
+      } catch {}
+    })();
+
     return applyBrokerTemplate(csv, mapping);
   } catch (e) {
     return {

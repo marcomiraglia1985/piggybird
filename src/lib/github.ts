@@ -109,6 +109,63 @@ export type Release = {
 };
 
 /**
+ * Notifica il dev team che un nuovo formato CSV (banca o broker) è stato
+ * riconosciuto via AI fallback. Crea un Issue su GitHub con metadata utili
+ * per buildare un parser deterministico nella release successiva.
+ *
+ * Async fire-and-forget: errori loggati ma NON bloccano l'import utente.
+ * Privacy: NO tx data, solo headers + mapping schema.
+ */
+export async function notifyDevOfNewTemplate(opts: {
+  kind: "bank" | "broker";
+  name: string;
+  signature: string;
+  sampleHeaders: string;
+  mapping: unknown;
+  userEmail?: string;
+  appVersion?: string;
+}): Promise<void> {
+  if (!process.env.GITHUB_TOKEN || !process.env.GITHUB_REPO) return;
+  try {
+    const labels =
+      opts.kind === "bank" ? ["new-bank", "ai-template"] : ["new-broker", "ai-template"];
+    const title = `[${opts.kind === "bank" ? "Bank" : "Broker"}] Nuovo formato AI: ${opts.name}`;
+    const body = [
+      `## 🤖 Nuovo ${opts.kind === "bank" ? "banca" : "broker"} riconosciuto via AI fallback`,
+      ``,
+      `Un beta tester ha importato un CSV di **${opts.name}** che non era riconosciuto dai parser deterministici. La app ha inferito automaticamente il mapping via Claude e l'ha salvato come template per future import.`,
+      ``,
+      `**Action item:** valutare se aggiungere un parser deterministico in \`src/lib/${opts.kind === "bank" ? "csv-parsers" : "broker-parsers"}/\` nella prossima release. Più formati noti = meno chiamate AI = meno costi.`,
+      ``,
+      `## 📋 Metadata`,
+      `- **Nome:** ${opts.name}`,
+      `- **Tipo:** ${opts.kind}`,
+      `- **Signature:** \`${opts.signature}\``,
+      opts.userEmail ? `- **Beta tester:** ${opts.userEmail}` : `- **Beta tester:** _(anonimo)_`,
+      opts.appVersion ? `- **App version:** ${opts.appVersion}` : ``,
+      ``,
+      `## 🏷️ Sample headers`,
+      `\`\`\``,
+      opts.sampleHeaders,
+      `\`\`\``,
+      ``,
+      `## 🗺️ Mapping inferito (AI)`,
+      `\`\`\`json`,
+      JSON.stringify(opts.mapping, null, 2),
+      `\`\`\``,
+      ``,
+      `---`,
+      `_Auto-generated dal universal ${opts.kind} parser fallback. Privacy: nessun dato di tx incluso, solo headers + mapping schema._`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    await createIssue(title, body, labels);
+  } catch (e) {
+    console.warn(`[notify-dev] Failed to create issue for new ${opts.kind} template:`, e);
+  }
+}
+
+/**
  * Ultima release pubblicata (non draft). Usato dall'update notifier.
  * Ritorna null se non ci sono ancora release.
  */

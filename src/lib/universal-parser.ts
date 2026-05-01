@@ -5,6 +5,31 @@ import { prisma } from "./prisma";
 import { decrypt } from "./crypto";
 import type { ParsedRow, ParserResult } from "./csv-parsers/types";
 import { AI_MODELS, computeCallCostEur } from "./ai-pricing";
+import { notifyDevOfNewTemplate } from "./github";
+import { getUserProfile } from "./user-profile";
+import pkg from "../../package.json";
+
+async function notifyDevTeamForNewBank(
+  name: string,
+  signature: string,
+  sampleHeaders: string,
+  mapping: unknown,
+): Promise<void> {
+  try {
+    const profile = await getUserProfile();
+    await notifyDevOfNewTemplate({
+      kind: "bank",
+      name,
+      signature,
+      sampleHeaders,
+      mapping,
+      userEmail: profile.email || undefined,
+      appVersion: (pkg as { version?: string }).version,
+    });
+  } catch {
+    // silent
+  }
+}
 
 /**
  * Universal CSV/XLSX parser via AI fallback.
@@ -435,18 +460,22 @@ export async function parseUniversalWithFallback(
   const { mapping, costEur } = await inferTemplateWithAI(sampleRows, sampleRaw);
 
   // Save to cache (signature dedupe)
+  const sampleHeadersJoined = headers.slice(0, 20).join(" | ");
   await prisma.parserTemplate
     .create({
       data: {
         signature,
         bankName: mapping.bankName ?? null,
         mapping: JSON.stringify(mapping),
-        sampleHeaders: headers.slice(0, 20).join(" | "),
+        sampleHeaders: sampleHeadersJoined,
         usageCount: 1,
         aiCostEur: costEur,
       },
     })
     .catch(() => null); // race: another request may have inserted same signature
+
+  // Notifica dev team async (fire-and-forget). Non bloccare l'import utente.
+  void notifyDevTeamForNewBank(mapping.bankName ?? "Sconosciuto", signature, sampleHeadersJoined, mapping);
 
   const result = applyTemplate(content, mapping);
   result.warnings.unshift(
