@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { Download, ExternalLink, Sparkles, X } from "lucide-react";
+import { openExternal } from "@/lib/open-external";
 
 /**
  * Badge versione + notifica di update. Posizionato nella sidebar accanto al
@@ -157,10 +158,9 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
 
               <div className="flex items-center gap-2">
                 {info.downloadUrl && (
-                  <a
-                    href={info.downloadUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternal(info.downloadUrl!)}
                     className="flex-1 h-10 rounded-lg bg-emerald-500 text-white text-sm font-medium inline-flex items-center justify-center gap-2 hover:bg-emerald-600 transition-colors"
                   >
                     <Download className="size-4" />
@@ -170,18 +170,17 @@ export function VersionBadge({ currentVersion }: { currentVersion: string }) {
                         ({(info.downloadSize / 1024 / 1024).toFixed(1)} MB)
                       </span>
                     )}
-                  </a>
+                  </button>
                 )}
                 {info.releaseUrl && (
-                  <a
-                    href={info.releaseUrl}
-                    target="_blank"
-                    rel="noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openExternal(info.releaseUrl!)}
                     className="h-10 px-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] text-sm inline-flex items-center gap-1.5"
                   >
                     GitHub
                     <ExternalLink className="size-3.5" />
-                  </a>
+                  </button>
                 )}
               </div>
 

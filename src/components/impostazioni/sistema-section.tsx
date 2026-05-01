@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, ExternalLink, Loader2, Lock, RefreshCw, Sparkles } from "lucide-react";
+import { openExternal } from "@/lib/open-external";
 
 type CheckResult = {
   current: string;
@@ -128,15 +129,17 @@ export function SistemaSection({ version }: { version: string }) {
                     )}
                   </div>
                 </div>
-                <a
-                  href={result.downloadUrl ?? result.releaseUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  type="button"
+                  onClick={() => {
+                    const url = result.downloadUrl ?? result.releaseUrl;
+                    if (url) openExternal(url);
+                  }}
                   className="inline-flex items-center justify-center gap-1.5 w-full h-8 rounded-md bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-xs font-medium hover:shadow-md"
                 >
                   Scarica v{result.latest}
                   <ExternalLink className="size-3" />
-                </a>
+                </button>
                 {result.downloadSize && (
                   <p className="text-[10px] text-[var(--fg-subtle)] text-center">
                     {(result.downloadSize / 1024 / 1024).toFixed(0)} MB ·{" "}
