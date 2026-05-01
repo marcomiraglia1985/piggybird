@@ -125,17 +125,6 @@ export default async function EstatesPage() {
               </CardContent>
             </Card>
           )}
-          <Card>
-            <CardContent>
-              <div className="text-xs text-[var(--color-fg-muted)]">Movimenti collegati</div>
-              <div className="text-2xl font-semibold tabular-nums mt-1">
-                {[...aggMap.values()].reduce((s, x) => s + x.count, 0)}
-              </div>
-              <div className="text-[11px] text-[var(--color-fg-subtle)] mt-1">
-                Entrate + spese tracciate
-              </div>
-            </CardContent>
-          </Card>
         </div>
       )}
 
