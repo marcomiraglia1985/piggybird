@@ -12,7 +12,20 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Codebase-specific:
+    "src-tauri/**",
+    "src/generated/**",
+    "scripts/**",
+    "src-tauri/standalone/**",
   ]),
+  // Custom rules
+  {
+    rules: {
+      // Console.log in production code è rumore; warn ma permetti console.warn/error
+      // perché spesso usati per fault reporting legittimo.
+      "no-console": ["warn", { allow: ["warn", "error"] }],
+    },
+  },
 ]);
 
 export default eslintConfig;

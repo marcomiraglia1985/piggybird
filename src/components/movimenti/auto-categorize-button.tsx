@@ -198,7 +198,7 @@ export function AutoCategorizeButton({
         ) {
           setError("AI non configurata");
           setInfo(
-            "Vai in Impostazioni → AI Features per inserire la tua API key Anthropic.",
+            "Vai in Impostazioni → Funzioni AI per inserire la tua API key Anthropic.",
           );
           setStage("review");
           return;

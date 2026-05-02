@@ -31,7 +31,7 @@ export async function register() {
       dsn: process.env.SENTRY_DSN,
       release: APP_RELEASE,
       // Più basso = meno noise; in beta vogliamo TUTTI gli errori reali.
-      tracesSampleRate: 0.1,
+      tracesSampleRate: 0.01,
       // Ignora errori innocui che non sono bug
       ignoreErrors: [
         "ECONNRESET",
@@ -78,7 +78,7 @@ export async function register() {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       release: APP_RELEASE,
-      tracesSampleRate: 0.1,
+      tracesSampleRate: 0.01,
     });
   }
 }

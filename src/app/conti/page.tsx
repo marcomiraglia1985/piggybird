@@ -9,11 +9,25 @@ import { FreezeToggle } from "@/components/conti/freeze-toggle";
 import { ClosedAccountActions } from "@/components/conti/closed-account-actions";
 import { getFreezeState, getDisplayBalances } from "@/lib/account-freeze";
 
-/** Conti che non vogliamo mostrare nella pagina /conti
- *  perché il loro valore reale è tracciato altrove (es. Binance → Investimenti,
- *  o sono account "tecnici" usati solo per il transfer-pairing degli acquisti
- *  investimento). */
-const HIDDEN_FROM_CONTI = new Set(["Binance", "Investimenti"]);
+/** Conti che non vogliamo mostrare nella pagina /conti perché il loro valore
+ *  reale è tracciato altrove (es. account collegato a Investment via API → la
+ *  card Investimenti aggrega tutto, mostrarli anche qui sarebbe doppio).
+ *
+ *  Regola attuale: nascondi i conti type=investment con provider != "generic"
+ *  (cioè con API integration: binance, revolut-x, ecc) E i conti generici
+ *  con name che corrisponde al label di un Investment row aggregato.
+ *
+ *  TODO universal-app: sostituire con flag `Account.hiddenFromConti: boolean`
+ *  o derivare da relazione esplicita Account ↔ Investment row. Per ora la
+ *  logica è data-driven, no name hardcoding.
+ */
+function isHiddenFromConti(account: { type: string; provider: string; name: string }, investmentNames: Set<string>): boolean {
+  // Account investment con provider API → tracciato in /investimenti
+  if (account.type === "investment" && account.provider !== "generic") return true;
+  // Account il cui nome corrisponde a un Investment row (aggregato sintetico)
+  if (investmentNames.has(account.name)) return true;
+  return false;
+}
 
 export const dynamic = "force-dynamic";
 
@@ -61,11 +75,14 @@ export default async function ContiPage() {
   // currentBalance; in Live = currentBalance + tx confermate dopo frozenAt.
   const allAccounts = await getDisplayBalances(allAccountsRaw);
 
-  const active = allAccounts.filter((a) => a.active && !HIDDEN_FROM_CONTI.has(a.name));
-  const closed = allAccounts.filter((a) => !a.active);
-
   const investments = await prisma.investment.findMany();
   const investTotal = investments.reduce((s, i) => s + i.currentValue, 0);
+  const investmentNames = new Set(investments.map((i) => i.name));
+
+  const active = allAccounts.filter(
+    (a) => a.active && !isHiddenFromConti(a, investmentNames),
+  );
+  const closed = allAccounts.filter((a) => !a.active);
 
   const grouped = active.reduce<Record<string, typeof active>>((acc, a) => {
     (acc[a.type] ??= []).push(a);

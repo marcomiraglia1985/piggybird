@@ -59,7 +59,27 @@ export function AiFeaturesSection() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setError(data.error ?? "Errore");
+        // Espandi il messaggio di errore in base allo status: la API ritorna
+        // dettagli specifici (es. 401 = key invalida, 403 = quota, network err)
+        // — usali invece del generico "Errore".
+        const detail = typeof data?.error === "string" ? data.error : null;
+        if (res.status === 401) {
+          setError(
+            detail ?? "API key non valida (401 unauthorized). Controlla che sia copiata correttamente.",
+          );
+        } else if (res.status === 403) {
+          setError(
+            detail ?? "Permessi insufficienti (403). La key potrebbe avere quota esaurita o scope limitati.",
+          );
+        } else if (res.status === 429) {
+          setError(detail ?? "Troppe richieste (429). Attendi qualche secondo e riprova.");
+        } else if (res.status >= 500) {
+          setError(
+            detail ?? `Errore server Anthropic (${res.status}). Riprova tra qualche minuto.`,
+          );
+        } else {
+          setError(detail ?? `Errore (${res.status}). Riprova o controlla la console.`);
+        }
       } else {
         setSuccess("API key salvata e validata.");
         setApiKey("");
@@ -67,7 +87,12 @@ export function AiFeaturesSection() {
         setTimeout(() => setSuccess(null), 3000);
       }
     } catch (e) {
-      setError(String(e));
+      // Network o JSON parse error — utente probabilmente offline
+      setError(
+        e instanceof TypeError && /fetch/i.test(String(e))
+          ? "Errore di rete: controlla la connessione internet e riprova."
+          : `Errore inatteso: ${e instanceof Error ? e.message : String(e)}`,
+      );
     } finally {
       setSaving(false);
     }
@@ -89,7 +114,7 @@ export function AiFeaturesSection() {
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Sparkles className="size-4 text-orange-400" />
-            AI Features
+            Funzioni AI
             <AIBadge className="ml-1" />
           </span>
         </CardTitle>

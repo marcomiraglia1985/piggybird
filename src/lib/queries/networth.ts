@@ -20,6 +20,12 @@ export async function getCurrentNetWorth() {
 
   // Friendsplit: net debit/credit (sum di tutte le tx). Coerente con
   // /friendsplit page. Si somma alla liquidità come receivable/payable.
+  //
+  // NOTA: ownershipShare NON viene applicato ai friendsplit accounts:
+  // l'amount delle tx è già al netto delle quote (es. cena diviso 4 → tx
+  // contiene la mia quota, non il totale). Applicare ownership darebbe
+  // doppio scaling. Il campo Account.ownershipShare resta a 1.0 di default
+  // per friendsplit, ignorato qui.
   const fsAccounts = accounts.filter((a) => a.type === "friendsplit");
   let friendsplitNet = 0;
   if (fsAccounts.length > 0) {

@@ -83,7 +83,8 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
 
   useEffect(() => {
     setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 60_000);
+    // 5 min: il widget visualizza alba/tramonto, transizioni lente.
+    const id = setInterval(() => setNow(new Date()), 300_000);
     return () => clearInterval(id);
   }, []);
 

@@ -38,7 +38,7 @@ export default async function ImpostazioniPage() {
         </Section>
       </div>
 
-      <Section title="AI Features">
+      <Section title="Funzioni AI">
         <div className="surface p-5">
           <AiFeaturesSection />
         </div>

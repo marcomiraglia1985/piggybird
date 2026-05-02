@@ -37,10 +37,27 @@ if [ -f "$DEST" ]; then
 fi
 
 URL="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz"
+SHASUMS_URL="https://nodejs.org/dist/v${NODE_VERSION}/SHASUMS256.txt"
 TMP=$(mktemp -d)
 
 echo "→ Download Node v${NODE_VERSION} per ${NODE_ARCH}..."
 curl -sL "$URL" -o "$TMP/node.tar.gz"
+
+echo "→ Verifica integrità (SHA256)..."
+curl -sL "$SHASUMS_URL" -o "$TMP/SHASUMS256.txt"
+EXPECTED_HASH=$(grep "node-v${NODE_VERSION}-${NODE_ARCH}.tar.gz" "$TMP/SHASUMS256.txt" | awk '{print $1}')
+if [ -z "$EXPECTED_HASH" ]; then
+  echo "❌ Hash atteso non trovato in SHASUMS256.txt"
+  exit 1
+fi
+ACTUAL_HASH=$(shasum -a 256 "$TMP/node.tar.gz" | awk '{print $1}')
+if [ "$EXPECTED_HASH" != "$ACTUAL_HASH" ]; then
+  echo "❌ SHA256 MISMATCH — possibile MITM o corruzione del download"
+  echo "   atteso: $EXPECTED_HASH"
+  echo "   trovato: $ACTUAL_HASH"
+  exit 1
+fi
+echo "  ↳ SHA256 OK"
 
 echo "→ Estraggo..."
 tar -xzf "$TMP/node.tar.gz" -C "$TMP"

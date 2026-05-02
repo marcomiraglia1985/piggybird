@@ -35,7 +35,8 @@ export function WorldClocksWidget() {
 
   useEffect(() => {
     setNow(new Date());
-    const id = setInterval(() => setNow(new Date()), 30_000);
+    // 5 min: il widget mostra apertura/chiusura mercati, no tick al secondo.
+    const id = setInterval(() => setNow(new Date()), 300_000);
     return () => clearInterval(id);
   }, []);
 

@@ -20,13 +20,31 @@ const PRICING_USD: Record<AIModelId, [number, number]> = {
   opus: [15.0, 75.0],
 };
 
+/**
+ * Anthropic prompt caching pricing (vs base input):
+ *  - cache_creation_input_tokens: 1.25× del prezzo input base (penalty per il primo write)
+ *  - cache_read_input_tokens:     0.10× del prezzo input base (90% sconto)
+ *  - input_tokens:                1.00× (base, non-cached)
+ * Output tokens senza modifiche dal caching.
+ */
+const CACHE_WRITE_MULTIPLIER = 1.25;
+const CACHE_READ_MULTIPLIER = 0.1;
+
 export function computeCallCostEur(
   model: AIModelId,
   inputTokens: number,
   outputTokens: number,
+  cacheCreationTokens: number = 0,
+  cacheReadTokens: number = 0,
 ): number {
   const [inUsd, outUsd] = PRICING_USD[model];
-  const usd = (inputTokens / 1_000_000) * inUsd + (outputTokens / 1_000_000) * outUsd;
+  const inputUsd = (inputTokens / 1_000_000) * inUsd;
+  const cacheWriteUsd =
+    (cacheCreationTokens / 1_000_000) * inUsd * CACHE_WRITE_MULTIPLIER;
+  const cacheReadUsd =
+    (cacheReadTokens / 1_000_000) * inUsd * CACHE_READ_MULTIPLIER;
+  const outputUsd = (outputTokens / 1_000_000) * outUsd;
+  const usd = inputUsd + cacheWriteUsd + cacheReadUsd + outputUsd;
   return usd * USD_TO_EUR;
 }
 

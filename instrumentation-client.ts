@@ -15,7 +15,7 @@ if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
     release: APP_RELEASE,
-    tracesSampleRate: 0.1,
+    tracesSampleRate: 0.01,
     // Replay disabilitato per privacy: registrerebbe DOM con dati finanziari
     replaysSessionSampleRate: 0,
     replaysOnErrorSampleRate: 0,

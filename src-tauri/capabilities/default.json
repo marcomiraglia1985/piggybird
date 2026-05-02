@@ -12,7 +12,16 @@
     {
       "identifier": "shell:allow-open",
       "allow": [
-        { "url": "^https?://.*" }
+        { "url": "^https://github\\.com/.*" },
+        { "url": "^https://api\\.github\\.com/.*" },
+        { "url": "^https://objects\\.githubusercontent\\.com/.*" },
+        { "url": "^https://release-assets\\.githubusercontent\\.com/.*" },
+        { "url": "^https://raw\\.githubusercontent\\.com/.*" },
+        { "url": "^https://console\\.anthropic\\.com/.*" },
+        { "url": "^https://docs\\.anthropic\\.com/.*" },
+        { "url": "^https://www\\.binance\\.com/.*" },
+        { "url": "^https://accounts\\.binance\\.com/.*" },
+        { "url": "^https://app\\.revolut\\.com/.*" }
       ]
     }
   ]

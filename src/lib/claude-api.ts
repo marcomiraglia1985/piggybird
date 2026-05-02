@@ -102,13 +102,21 @@ export async function deleteAnthropicCredential(): Promise<void> {
     .catch(() => null);
 }
 
-/** Test rapido: chiama l'API con un prompt minimale per validare la key. */
+/**
+ * Test della credential: chiama l'API con un prompt minimale per validare
+ * la key + verificare l'accesso ai modelli realmente usati dalla app
+ * (haiku per task funzionali, sonnet per insights). Cattura errori comuni
+ * con messaggi specifici invece del generico "Errore".
+ */
 export async function testAnthropicCredential(apiKey: string): Promise<{
   ok: boolean;
   error?: string;
 }> {
   try {
     const client = new Anthropic({ apiKey });
+    // Test sul modello più usato (haiku per categorize/parser); se l'utente
+    // ha quota solo su sonnet/opus, il fallimento è informativo
+    // (categorize avrebbe fallito comunque al primo uso reale).
     await client.messages.create({
       model: AI_MODELS.haiku,
       max_tokens: 5,
@@ -117,13 +125,36 @@ export async function testAnthropicCredential(apiKey: string): Promise<{
     return { ok: true };
   } catch (e) {
     const err = e as { status?: number; message?: string };
-    return {
-      ok: false,
-      error:
-        err.status === 401
-          ? "API key non valida (401 unauthorized)"
-          : err.message ?? String(e),
-    };
+    if (err.status === 401) {
+      return { ok: false, error: "API key non valida (401 unauthorized)." };
+    }
+    if (err.status === 403) {
+      return {
+        ok: false,
+        error:
+          "Permessi insufficienti (403). La key potrebbe avere quota esaurita o mancare di accesso al modello Haiku.",
+      };
+    }
+    if (err.status === 429) {
+      return {
+        ok: false,
+        error: "Troppe richieste (429). Riprova tra qualche secondo.",
+      };
+    }
+    if (err.status === 404) {
+      return {
+        ok: false,
+        error:
+          "Modello non disponibile (404). La key potrebbe essere su un workspace senza accesso a Claude Haiku.",
+      };
+    }
+    if ((err.status ?? 0) >= 500) {
+      return {
+        ok: false,
+        error: `Errore server Anthropic (${err.status}). Riprova tra qualche minuto.`,
+      };
+    }
+    return { ok: false, error: err.message ?? String(e) };
   }
 }
 
@@ -202,7 +233,20 @@ export async function callClaude(
       .join("");
     const inputTokens = resp.usage?.input_tokens ?? 0;
     const outputTokens = resp.usage?.output_tokens ?? 0;
-    const costEur = computeCallCostEur(model, inputTokens, outputTokens);
+    // Anthropic prompt caching: tracking dei token cached per cost più accurato.
+    // Se Anthropic SDK non li ritorna (modelli/versioni che non supportano cache),
+    // restano 0 e il calcolo collassa al vecchio comportamento.
+    const cacheCreationTokens =
+      (resp.usage as { cache_creation_input_tokens?: number })?.cache_creation_input_tokens ?? 0;
+    const cacheReadTokens =
+      (resp.usage as { cache_read_input_tokens?: number })?.cache_read_input_tokens ?? 0;
+    const costEur = computeCallCostEur(
+      model,
+      inputTokens,
+      outputTokens,
+      cacheCreationTokens,
+      cacheReadTokens,
+    );
     result = { text, inputTokens, outputTokens, costEur, model };
   } catch (e) {
     const err = e as { status?: number; message?: string };

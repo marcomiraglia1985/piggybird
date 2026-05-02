@@ -72,7 +72,16 @@ function parseRevolut(csv: string): ParseResult {
     if (!isFinite(date.getTime())) continue;
 
     const totalAmtRaw = parseSignedAmount(r["Total Amount"] ?? "0");
-    const fx = parseFloat(r["FX Rate"] ?? "1") || 1;
+    let fx = parseFloat(r["FX Rate"] ?? "1") || 1;
+    // Sanity check: fxRate ragionevole è in [0.5, 2.0] per major currencies
+    // (EUR/USD/GBP/CHF). Fuori range = export corrotto o convenzione sbagliata.
+    // Defaulta a 1.0 (importo treato come EUR) per non corrompere il P/L.
+    if (fx < 0.5 || fx > 2.0) {
+      console.warn(
+        `[revolut-parser] fxRate sospetto (${fx}) per currency ${r["Currency"]}, defaultando a 1.0`,
+      );
+      fx = 1;
+    }
     const currency = (r["Currency"] ?? "EUR").trim().toUpperCase();
     const amountEur = Math.abs(
       currency === "EUR" ? totalAmtRaw : totalAmtRaw / fx,

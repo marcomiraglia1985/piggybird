@@ -167,7 +167,10 @@ model Investment {
   platform     String
   currentValue Float
   /** Costo totale (entry price) — se noto. Permette di calcolare gain a livello
-   *  di portafoglio anche quando il breakdown per asset non è disponibile. */
+   *  di portafoglio anche quando il breakdown per asset non è disponibile.
+   *  ⚠️ NULLABLE per retrocompatibilità con DB v0.1-v0.2 (utenti senza cost basis
+   *  manuale). Codice consumer DEVE coercere `?? 0` quando somma in aggregate.
+   *  TODO: migration NOT NULL DEFAULT 0 quando init-db.js supporterà ALTER NULLABLE. */
   costEur      Float?
   currency     String   @default("EUR")
   displayOrder Int      @default(0)
@@ -252,6 +255,13 @@ model StockTrade {
   pricePerUnit Float?
   amountEur    Float    @default(0)
   currency     String   @default("EUR")
+  /** Tasso di cambio al momento del trade. CONVENZIONE: "native per EUR"
+   *  ovvero quanti unità della valuta nativa equivalgono a 1 EUR.
+   *  Es. trade USD a 1 EUR = 1.10 USD → fxRate = 1.10.
+   *  ATTENZIONE: `StockPosition.fxToEur` usa la convenzione INVERSA
+   *  ("EUR per native", es. fxToEur = 0.91 ≡ fxRate = 1.10). Per uniformare
+   *  gli import devono fare `1/fxRate` quando popolano fxToEur. Vedi
+   *  memory `feedback_revolut_alignment` per dettagli. */
   fxRate       Float    @default(1.0)
   /** "revolut-csv-import" | "manual" | ... */
   source       String   @default("manual")

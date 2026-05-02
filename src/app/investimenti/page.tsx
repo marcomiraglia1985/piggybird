@@ -107,6 +107,8 @@ export default async function InvestimentiPage() {
     return acc;
   }, {});
 
+  const isEmpty = investments.length === 0;
+
   return (
     <div className="space-y-6">
       <header className="flex items-start justify-between gap-3 flex-wrap">
@@ -122,6 +124,35 @@ export default async function InvestimentiPage() {
         </div>
       </header>
 
+      {isEmpty && (
+        <div className="surface p-8 text-center space-y-3 border border-violet-500/30 bg-gradient-to-br from-violet-500/[0.06] via-[var(--color-surface)] to-indigo-500/[0.04]">
+          <div className="size-14 mx-auto rounded-2xl bg-violet-500/10 border border-violet-500/30 flex items-center justify-center text-2xl">
+            📈
+          </div>
+          <h2 className="text-lg font-semibold tracking-tight">Nessun investimento ancora</h2>
+          <p className="text-sm text-[var(--color-fg-muted)] max-w-md mx-auto leading-relaxed">
+            Per iniziare crea un conto di tipo &quot;Investimento&quot; (Conti → Aggiungi conto).
+            Quando hai un broker con API supportata, collega le credenziali in Impostazioni →
+            Integrazioni. Per broker senza API usa import CSV dei trade.
+          </p>
+          <div className="inline-flex flex-wrap items-center justify-center gap-2 pt-1">
+            <Link
+              href="/conti/nuovo?type=investment"
+              className="h-9 px-4 rounded-lg bg-violet-500 text-white text-sm font-medium hover:bg-violet-600 inline-flex items-center gap-1.5"
+            >
+              + Aggiungi conto investimento
+            </Link>
+            <Link
+              href="/impostazioni"
+              className="h-9 px-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-sm hover:border-[var(--color-border-strong)] inline-flex items-center"
+            >
+              Impostazioni → Integrazioni
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {!isEmpty && (
       <div className="relative overflow-hidden rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-violet-500/10 via-[var(--color-surface)] to-indigo-500/10 p-8">
         <div className="pointer-events-none absolute -top-20 -right-20 size-72 rounded-full bg-violet-500/20 blur-3xl" />
         <div className="relative space-y-6">
@@ -214,7 +245,9 @@ export default async function InvestimentiPage() {
           </div>
         </div>
       </div>
+      )}
 
+      {!isEmpty && (
       <Suspense fallback={<InvestmentsChartSkeleton />}>
         <InvestmentsChartAsync
           hasStocks={dataState.hasStocks}
@@ -222,6 +255,7 @@ export default async function InvestimentiPage() {
           binanceConnected={!!binanceCred}
         />
       </Suspense>
+      )}
 
       <div>
         <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)] mb-3 px-1">

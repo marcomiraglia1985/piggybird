@@ -18,13 +18,51 @@ static SIDECAR_PID: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32:
 /// non killerebbe automaticamente il processo, ma chiuderebbe i pipe).
 static SIDECAR_CHILD: OnceLock<Mutex<Option<std::process::Child>>> = OnceLock::new();
 
+/// Soglia di rotation log: oltre 100MB il file corrente viene ruotato.
+/// Manteniamo max 5 file storici (piggybird.log.1 → piggybird.log.5).
+const LOG_ROTATE_BYTES: u64 = 100 * 1024 * 1024;
+const LOG_ROTATE_KEEP: u32 = 5;
+
 fn log_line(line: &str) {
     if let Some(p) = LOG_PATH.get() {
+        // Rotation check: se il file supera la soglia, ruota prima di scrivere
+        if let Ok(meta) = std::fs::metadata(p) {
+            if meta.len() > LOG_ROTATE_BYTES {
+                rotate_log(p);
+            }
+        }
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
             let _ = writeln!(f, "[{}] {}", chrono_now(), line);
         }
     }
     log::info!("{}", line);
+}
+
+/// Ruota il log corrente: piggybird.log.4 → .5, .3 → .4, ..., .log → .log.1.
+/// Il più vecchio (.5) viene cancellato.
+fn rotate_log(current: &PathBuf) {
+    let parent = match current.parent() {
+        Some(p) => p,
+        None => return,
+    };
+    let stem = match current.file_name().and_then(|n| n.to_str()) {
+        Some(s) => s,
+        None => return,
+    };
+    // Cancella il più vecchio
+    let oldest = parent.join(format!("{}.{}", stem, LOG_ROTATE_KEEP));
+    let _ = std::fs::remove_file(&oldest);
+    // Sposta gli altri
+    for i in (1..LOG_ROTATE_KEEP).rev() {
+        let src = parent.join(format!("{}.{}", stem, i));
+        let dst = parent.join(format!("{}.{}", stem, i + 1));
+        if src.exists() {
+            let _ = std::fs::rename(&src, &dst);
+        }
+    }
+    // .log → .log.1
+    let first = parent.join(format!("{}.1", stem));
+    let _ = std::fs::rename(current, &first);
 }
 
 fn chrono_now() -> String {
