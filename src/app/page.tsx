@@ -38,6 +38,9 @@ import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
 import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
 import { WelcomeTutorial } from "@/components/dashboard/welcome-tutorial";
+import { EmptyDashboardBanner } from "@/components/dashboard/empty-dashboard-banner";
+import { FxStaleAlert } from "@/components/dashboard/fx-stale-alert";
+import { getFxStalenessReport } from "@/lib/fx-staleness";
 import { getFreezeState } from "@/lib/account-freeze";
 
 export default async function Dashboard() {
@@ -61,6 +64,7 @@ export default async function Dashboard() {
     stockIrrInputs,
     spySeries,
     worldLandPath,
+    fxStaleness,
   ] = await Promise.all([
     getNetWorthHistory(),
     getCurrentNetWorth(),
@@ -89,6 +93,7 @@ export default async function Dashboard() {
     getStockIrrInputs(),
     getSpyMonthlySeries(),
     getWorldLandPath(),
+    getFxStalenessReport(),
   ]);
 
   // Tutti gli estate attivi (per il CategoryPicker dei widget). Diverso da
@@ -128,9 +133,13 @@ export default async function Dashboard() {
       };
     });
 
+  const hasNoAccounts = accounts.length === 0;
+
   return (
     <>
       <WelcomeTutorial />
+      {hasNoAccounts && <EmptyDashboardBanner />}
+      {!hasNoAccounts && <FxStaleAlert report={fxStaleness} />}
       <DashboardShell
       accountsFrozen={freezeState.frozen}
       kpiHero={

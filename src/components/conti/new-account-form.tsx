@@ -5,14 +5,16 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Plus } from "lucide-react";
 import { getProvidersForAccountType } from "@/lib/account-providers";
 
+// Emoji allineate alle icone lucide-react usate nella sidebar (Users /
+// Handshake / BookOpen) per coerenza visiva tra Aggiungi Conto e nav.
 const TYPES = [
   { value: "liquid", label: "Liquidità", emoji: "💳", desc: "Conto corrente personale" },
-  { value: "joint", label: "Cointestato", emoji: "🤝", desc: "Conto condiviso (es. con compagn*)" },
+  { value: "joint", label: "Cointestato", emoji: "👥", desc: "Conto condiviso (es. con compagn*)" },
   { value: "cash", label: "Contante", emoji: "💵", desc: "Liquidi fisici" },
   { value: "savings", label: "Risparmi", emoji: "🐷", desc: "Conto deposito o salvadanaio" },
-  { value: "credit", label: "Crediti", emoji: "💳", desc: "Carta di credito o credito" },
+  { value: "credit", label: "Crediti", emoji: "📖", desc: "Soldi prestati ad amici o persone" },
   { value: "investment", label: "Investimenti", emoji: "📈", desc: "Conto trading dedicato" },
-  { value: "friendsplit", label: "Friendsplit", emoji: "🧾", desc: "Spese condivise: chi deve quanto a chi" },
+  { value: "friendsplit", label: "Friendsplit", emoji: "🤝", desc: "Spese condivise: chi deve quanto a chi" },
 ] as const;
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "ALL"];

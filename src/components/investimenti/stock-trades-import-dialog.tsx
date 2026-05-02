@@ -8,28 +8,34 @@ import {
   Upload,
   CheckCircle2,
   AlertTriangle,
-  Trash2,
   X,
   FileText,
 } from "lucide-react";
 
-type SupportedBroker = { name: string; platform: string };
 type Summary = {
   platform: string;
   total: number;
   inserted: number;
   skipped: number;
 };
-type DbStat = { platform: string; count: number };
+
+type InvestmentAccount = {
+  id: string;
+  name: string;
+  emoji: string | null;
+  type: string;
+};
 
 /**
  * Pulsante + dialog popup per importare trade stock via CSV.
- * Universal: lista i broker supportati dal backend, mostra le piattaforme
- * già importate con conteggio eventi, permette upload + delete-by-platform.
  *
- * Nessun broker hardcodato — il backend (`/api/integrations/stock-trades/import`)
- * espone la lista `supported` via GET. Per supportare un nuovo broker basta
- * aggiungere il parser server-side e l'utente lo vedrà qui automaticamente.
+ * Flow utente:
+ *   1. Sceglie a quale conto investimento si riferisce il CSV
+ *   2. Trascina/seleziona il file
+ *   3. Backend rileva il formato del broker e fa upsert deduplicato
+ *
+ * Niente auto-detection visibile né lista "Già importati" nel UI: l'idea è
+ * che sia l'utente a dire dove va il CSV, in modo prevedibile.
  */
 export function StockTradesImportDialog({
   triggerLabel = "↗ Trade stock senza API: importa CSV",
@@ -40,8 +46,8 @@ export function StockTradesImportDialog({
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [supported, setSupported] = useState<SupportedBroker[]>([]);
-  const [stats, setStats] = useState<DbStat[]>([]);
+  const [accounts, setAccounts] = useState<InvestmentAccount[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [uploading, setUploading] = useState(false);
   const [lastResult, setLastResult] = useState<Summary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -50,34 +56,37 @@ export function StockTradesImportDialog({
 
   useEffect(() => setMounted(true), []);
 
-  async function loadStatus() {
+  async function loadAccounts() {
     try {
-      const sup = await fetch("/api/integrations/stock-trades/import").then(
-        (r) => r.json(),
-      );
-      setSupported(sup.supported ?? []);
-      const s = await fetch("/api/integrations/stock-trades/stats").then((r) =>
-        r.json(),
-      );
-      setStats(s.byPlatform ?? []);
+      const r = await fetch("/api/accounts");
+      const j = await r.json();
+      const all: InvestmentAccount[] = j.accounts ?? [];
+      const list = all.filter((a) => a.type === "investment");
+      setAccounts(list);
+      if (list.length === 1) setSelectedAccountId(list[0].id);
     } catch {
       /* ignore */
     }
   }
 
   useEffect(() => {
-    if (open) loadStatus();
+    if (open) loadAccounts();
   }, [open]);
 
   async function onUpload(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!selectedAccountId) {
+      setError("Seleziona prima il conto investimento di destinazione.");
+      return;
+    }
     setUploading(true);
     setError(null);
     setLastResult(null);
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("accountId", selectedAccountId);
       const res = await fetch("/api/integrations/stock-trades/import", {
         method: "POST",
         body: form,
@@ -87,7 +96,6 @@ export function StockTradesImportDialog({
         setError(data.error ?? "Import fallito");
       } else {
         setLastResult(data);
-        await loadStatus();
         router.refresh();
       }
     } catch (e) {
@@ -96,20 +104,6 @@ export function StockTradesImportDialog({
       setUploading(false);
       if (fileRef.current) fileRef.current.value = "";
     }
-  }
-
-  async function deletePlatform(platform: string) {
-    const count = stats.find((s) => s.platform === platform)?.count ?? 0;
-    const ok = confirm(
-      `Cancellare TUTTI i ${count} trade della platform "${platform}"? Re-importabile dal CSV.`,
-    );
-    if (!ok) return;
-    await fetch(
-      `/api/integrations/stock-trades/import?platform=${encodeURIComponent(platform)}`,
-      { method: "DELETE" },
-    );
-    await loadStatus();
-    router.refresh();
   }
 
   function close() {
@@ -166,54 +160,58 @@ export function StockTradesImportDialog({
                   </div>
 
                   <p className="text-xs text-[var(--fg-muted)] leading-relaxed">
-                    Per i broker stock senza API (Revolut, Trade212, ecc.) i
-                    BUY/SELL si aggiornano via CSV export. Trascina il file qui
-                    sotto: il broker viene riconosciuto automaticamente dal
-                    formato.
+                    Per i broker stock senza API i BUY/SELL si aggiornano via
+                    CSV export. Trascina il file qui sotto:
                   </p>
 
-                  {/* Broker supportati */}
+                  {/* Selettore conto investimento di destinazione */}
                   <div className="space-y-1.5">
-                    <p className="text-[11px] uppercase tracking-wider text-[var(--fg-subtle)] font-medium">
-                      Broker riconosciuti automaticamente
-                    </p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {supported.length === 0 ? (
-                        <span className="text-[11px] text-[var(--fg-subtle)] italic">
-                          Caricamento…
-                        </span>
-                      ) : (
-                        supported.map((b) => (
-                          <span
-                            key={b.platform}
-                            className="inline-flex items-center gap-1 rounded-md border border-[var(--border)] bg-[var(--surface-2)] px-2 py-0.5 text-[11px]"
-                          >
-                            {b.name}
-                          </span>
-                        ))
-                      )}
-                    </div>
-                    <p className="text-[10px] text-[var(--fg-subtle)] italic">
-                      Altri broker si aggiungono dal backend (parser dedicato).
-                    </p>
+                    <label className="text-[11px] uppercase tracking-wider text-[var(--fg-subtle)] font-medium block">
+                      Conto investimento di destinazione
+                    </label>
+                    {accounts.length === 0 ? (
+                      <p className="text-[11px] text-[var(--fg-subtle)] italic">
+                        Nessun conto investimento attivo. Creane uno da Conti →
+                        Aggiungi → Investimento.
+                      </p>
+                    ) : (
+                      <select
+                        value={selectedAccountId}
+                        onChange={(e) => setSelectedAccountId(e.target.value)}
+                        disabled={uploading}
+                        className="w-full h-9 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
+                      >
+                        <option value="">Scegli un conto…</option>
+                        {accounts.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.emoji ? `${a.emoji} ` : ""}
+                            {a.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
 
                   {/* Upload */}
                   <label
-                    className={`flex items-center justify-center gap-2 h-12 rounded-lg text-sm font-medium border-2 border-dashed cursor-pointer transition-colors ${
-                      uploading
-                        ? "bg-[var(--surface-2)] border-[var(--border)] text-[var(--fg-subtle)] cursor-wait"
-                        : "bg-violet-500/[0.06] border-violet-500/40 text-violet-300 hover:bg-violet-500/[0.12] hover:border-violet-500/70"
+                    className={`flex items-center justify-center gap-2 h-12 rounded-lg text-sm font-medium border-2 border-dashed transition-colors ${
+                      !selectedAccountId || uploading
+                        ? "bg-[var(--color-surface-2)] border-[var(--color-border)] text-[var(--color-fg-subtle)] cursor-not-allowed"
+                        : "bg-violet-500/[0.06] border-violet-500/40 text-violet-300 hover:bg-violet-500/[0.12] hover:border-violet-500/70 cursor-pointer"
                     }`}
                   >
                     <Upload className="size-4" />
-                    {uploading ? "Importazione…" : "Trascina o seleziona CSV"}
+                    {uploading
+                      ? "Importazione…"
+                      : selectedAccountId
+                        ? "Trascina o seleziona CSV"
+                        : "Seleziona prima il conto"}
                     <input
                       ref={fileRef}
                       type="file"
                       accept=".csv,text/csv"
                       onChange={onUpload}
-                      disabled={uploading}
+                      disabled={uploading || !selectedAccountId}
                       className="hidden"
                     />
                   </label>
@@ -243,36 +241,6 @@ export function StockTradesImportDialog({
                         </div>
                         <div className="text-[var(--fg-muted)] mt-0.5">{error}</div>
                       </div>
-                    </div>
-                  )}
-
-                  {/* Stats per broker già importato */}
-                  {stats.length > 0 && (
-                    <div className="space-y-1.5 border-t border-[var(--border)]/60 pt-4">
-                      <p className="text-[11px] uppercase tracking-wider text-[var(--fg-subtle)] font-medium">
-                        Già importati
-                      </p>
-                      {stats.map((s) => (
-                        <div
-                          key={s.platform}
-                          className="flex items-center justify-between rounded-md border border-[var(--border)] bg-[var(--surface-2)]/40 px-3 py-2 text-xs"
-                        >
-                          <span>
-                            <strong>{s.platform}</strong>{" "}
-                            <span className="text-[var(--fg-subtle)] tabular-nums">
-                              · {s.count} eventi
-                            </span>
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => deletePlatform(s.platform)}
-                            className="size-7 inline-flex items-center justify-center rounded text-[var(--fg-muted)] hover:text-rose-400 hover:bg-rose-500/10"
-                            title={`Cancella tutti i trade ${s.platform}`}
-                          >
-                            <Trash2 className="size-3.5" />
-                          </button>
-                        </div>
-                      ))}
                     </div>
                   )}
                 </motion.div>

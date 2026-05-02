@@ -7,6 +7,16 @@ datasource db {
   provider = "sqlite"
 }
 
+// ⚠️ DEBT NOTO — TUTTI i campi monetari usano Float (REAL in SQLite).
+// Float ha imprecisione binaria (0.1 + 0.2 ≠ 0.3) → drift cumulativo possibile
+// su saldi grandi con molte tx. Per ora mitigato da `roundEur()` (lib/utils.ts)
+// chiamato sui totali aggregati dei KPI dashboard. Migrazione futura a Decimal
+// (string-backed via prisma adapter): pianificata ma non-trivial perché:
+//   - rompe ogni `a.amount + b.amount` (richiede Decimal.add)
+//   - JSON serialization cambia (Decimal object instead of number)
+//   - migration data esistente (ALTER COLUMN type) non supportata da SQLite
+// Vedi memoria `project_decimal_migration_todo.md` per piano.
+
 model Account {
   id             String   @id @default(cuid())
   name           String   @unique

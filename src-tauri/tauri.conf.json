@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Piggybird",
-  "version": "0.2.10",
+  "version": "0.3.0",
   "identifier": "app.piggybird",
   "build": {
     "beforeBuildCommand": "tools/tauri-prebuild.sh",
@@ -23,7 +23,7 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": "default-src 'self' http://127.0.0.1:13371 http://localhost:13371; script-src 'self' http://127.0.0.1:13371 http://localhost:13371 'unsafe-inline' 'wasm-unsafe-eval'; style-src 'self' http://127.0.0.1:13371 http://localhost:13371 'unsafe-inline'; img-src 'self' http://127.0.0.1:13371 http://localhost:13371 data: blob: https:; font-src 'self' data:; connect-src 'self' http://127.0.0.1:13371 http://localhost:13371 https://api.anthropic.com https://api.github.com https://*.coingecko.com https://*.binance.com; frame-ancestors 'none'; object-src 'none';"
     },
     "macOSPrivateApi": false
   },

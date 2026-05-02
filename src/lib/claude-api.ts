@@ -128,12 +128,39 @@ export async function testAnthropicCredential(apiKey: string): Promise<{
 }
 
 /**
+ * Rate limit: max 5 chiamate AI / 60 secondi. In-memory rolling window
+ * (per-process — l'app desktop ha 1 istanza, va bene). Protegge da
+ * spam accidentale (es. utente che clicca rapido) o malicious loops.
+ * Throw `Error("rate-limit:retry-after-Xs")` se superato.
+ */
+const RATE_LIMIT_MAX = 5;
+const RATE_LIMIT_WINDOW_MS = 60_000;
+const callTimestamps: number[] = [];
+
+function checkRateLimit(): void {
+  const now = Date.now();
+  // Drop timestamps fuori dalla finestra
+  while (callTimestamps.length > 0 && now - callTimestamps[0] > RATE_LIMIT_WINDOW_MS) {
+    callTimestamps.shift();
+  }
+  if (callTimestamps.length >= RATE_LIMIT_MAX) {
+    const oldest = callTimestamps[0];
+    const retryAfterSec = Math.ceil((RATE_LIMIT_WINDOW_MS - (now - oldest)) / 1000);
+    throw new Error(
+      `Limite chiamate AI raggiunto (${RATE_LIMIT_MAX}/min). Riprova tra ${retryAfterSec}s.`,
+    );
+  }
+  callTimestamps.push(now);
+}
+
+/**
  * Chiamata principale: Claude messages API + tracking automatico in AIUsage.
- * Lancia errore se: (a) credential mancante, (b) API error.
+ * Lancia errore se: (a) credential mancante, (b) rate limit superato, (c) API error.
  */
 export async function callClaude(
   opts: ClaudeCallOptions,
 ): Promise<ClaudeCallResult> {
+  checkRateLimit();
   const apiKey = await getApiKey();
   if (!apiKey) {
     throw new Error("Nessuna API key Anthropic configurata.");

@@ -87,9 +87,12 @@ async function computeInputSignature(): Promise<string> {
       orderBy: [{ type: "asc" }, { platform: "asc" }],
     }),
   ]);
-  // Includo anche l'hour bucket corrente: "current value" può cambiare
-  // intraday (currentPrice), vogliamo refresh max 1 volta/ora.
-  const hourBucket = Math.floor(Date.now() / (3600 * 1000));
+  // Day bucket: invalida la cache max 1x/giorno (era 1x/ora → causava
+  // rifetch Yahoo lento ogni 60 min). I dati storici non cambiano; il punto
+  // "oggi" usa currentPrice già in DB (setato dal sync esplicito utente),
+  // quindi 1 refresh/giorno è abbastanza fresco. Il bottone "Sync" force-
+  // invalida via invalidateInvestmentsHistoryCache().
+  const dayBucket = Math.floor(Date.now() / (24 * 3600 * 1000));
   const payload = JSON.stringify({
     stockPositions,
     stockTrades,
@@ -97,7 +100,7 @@ async function computeInputSignature(): Promise<string> {
     cryptoTrades,
     cryptoCostBases,
     investments,
-    hourBucket,
+    dayBucket,
   });
   return createHash("sha256").update(payload).digest("hex").slice(0, 32);
 }

@@ -2,8 +2,9 @@ import { prisma } from "@/lib/prisma";
 import Link from "next/link";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatEUR } from "@/lib/utils";
-import { TrendingUp } from "lucide-react";
+import { TrendingUp, Layers } from "lucide-react";
 import { SyncAllButton } from "@/components/investimenti/sync-all-button";
+import { RichTooltip } from "@/components/ui/rich-tooltip";
 import { StockTradesImportDialog } from "@/components/investimenti/stock-trades-import-dialog";
 import { ensureDefaultInvestmentCategories } from "@/lib/seed-defaults";
 import { hasInvestmentData } from "@/lib/investments-history";
@@ -146,7 +147,34 @@ export default async function InvestimentiPage() {
             </div>
             {totalCost > 0 && (
               <div className="sm:text-right">
-                <div className="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] mb-2">
+                <div className="text-xs uppercase tracking-widest text-[var(--color-fg-muted)] mb-2 inline-flex items-center gap-1 sm:justify-end">
+                  <RichTooltip
+                    title="Come calcoliamo Unrealized P/L"
+                    icon={<Layers className="size-3.5 text-violet-400" />}
+                    align="right"
+                  >
+                    <p>
+                      È la differenza tra il <strong>valore corrente</strong> delle tue posizioni e il loro <strong>cost basis</strong> (quanto hai speso per acquistarle), per ogni asset di cui conosciamo il costo.
+                    </p>
+                    <p>Il cost basis viene letto in ordine di preferenza:</p>
+                    <ul className="space-y-1 pl-3 list-disc">
+                      <li>
+                        Per ogni posizione di stock/ETF di cui hai un <strong>prezzo medio di carico</strong>: <span className="font-mono text-[10px]">shares × (currentPrice − avgCost) × FX</span>
+                      </li>
+                      <li>
+                        Per crypto con cost basis dettagliato per asset (es. da export di un exchange): differenza tra valore corrente e cost registrato
+                      </li>
+                      <li>
+                        Per investimenti aggregati con cost manuale (es. lump sum di un conto): <span className="font-mono text-[10px]">currentValue − costEur</span>
+                      </li>
+                    </ul>
+                    <p>
+                      Le posizioni senza cost basis noto sono escluse dal calcolo (compaiono nel valore totale ma non nel P/L).
+                    </p>
+                    <p className="text-[10px] text-[var(--color-fg-subtle)] pt-2 border-t border-[var(--color-border)]/50">
+                      Le conversioni in EUR usano il <strong>cambio corrente</strong>. Su posizioni multi-currency con FX cambiato negli anni, il numero qui può differire da quello del tuo broker (che spesso lockà il FX al momento dell&apos;acquisto).
+                    </p>
+                  </RichTooltip>
                   Unrealized P/L
                 </div>
                 <div
@@ -212,6 +240,17 @@ export default async function InvestimentiPage() {
                 : isStocksRevolut
                   ? "/investimenti/stocks"
                   : null;
+            // Stato API per la badge sotto al valore:
+            // - "api-live"      → credential configurata e provider supporta sync (Binance, Revolut X)
+            // - "api-available" → provider supporta API ma credential mancante (CTA "collega")
+            // - "api-pending"   → provider non ha ancora API integration (es. Stocks via Yahoo)
+            // - "no-detail"     → nessun detail né API (semplice card statica)
+            let apiState: "api-live" | "api-available" | "api-pending" | "no-detail";
+            if (isBinance) apiState = binanceCred ? "api-live" : "api-available";
+            else if (isRevolutCrypto) apiState = revolutXCred ? "api-live" : "api-available";
+            else if (detailHref) apiState = "api-pending";
+            else apiState = "no-detail";
+
             const card = (
               <div
                 className={`relative overflow-hidden rounded-2xl border bg-gradient-to-br ${meta.color} p-5 transition-transform ${detailHref ? "hover:-translate-y-0.5" : ""}`}
@@ -228,10 +267,20 @@ export default async function InvestimentiPage() {
                 <div className="text-2xl font-semibold tabular-nums mt-1">
                   {formatEUR(inv.currentValue)}
                 </div>
-                {detailHref && (
-                  <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-violet-400">
-                    <span className="size-1.5 rounded-full bg-violet-400 animate-pulse" />
-                    Live · click per dettaglio
+                {apiState === "api-live" && (
+                  <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-emerald-500 dark:text-emerald-400">
+                    <span className="size-1.5 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
+                    API attiva · click per dettaglio
+                  </div>
+                )}
+                {apiState === "api-available" && (
+                  <div className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">
+                    Collega API per sync automatico · click per dettaglio
+                  </div>
+                )}
+                {apiState === "api-pending" && (
+                  <div className="mt-2 text-[11px] text-[var(--fg-muted)]">
+                    Sync manuale · click per dettaglio
                   </div>
                 )}
               </div>
@@ -248,12 +297,23 @@ export default async function InvestimentiPage() {
         </div>
       </div>
 
+      <div className="text-[11px] text-[var(--fg-muted)] leading-relaxed pt-2 surface p-3">
+        Per attivare il sync automatico di un provider con API supportata, vai su{" "}
+        <Link
+          href="/impostazioni"
+          className="text-violet-700 dark:text-violet-300 hover:underline font-medium"
+        >
+          Impostazioni → Integrazioni
+        </Link>{" "}
+        e collega le tue credenziali read-only.
+      </div>
+
       <div className="text-[10px] text-[var(--fg-subtle)] leading-relaxed pt-2">
         <span className="opacity-70">Note tecniche:</span>{" "}
-        Crypto Binance via API (saldi spot/earn/funding, prezzi EUR ufficiali) ·
-        Crypto Revolut X via API Ed25519 read-only (prezzi EUR via Binance public ticker) ·
-        Stocks Revolut prezzi via Yahoo (refresh manuale) · Cost basis FIFO da CSV +
-        FX ECB. Sync tutto = lancia tutti gli active sync in parallelo.
+        Crypto via API degli exchange connessi (saldi e prezzi EUR ufficiali) ·
+        Stocks/ETF prezzi via Yahoo Finance (refresh manuale dal bottone Sync) ·
+        Cost basis FIFO da CSV broker importati · Conversioni FX a tassi ECB.
+        Sync tutto = lancia in parallelo tutti i provider connessi.
       </div>
     </div>
   );

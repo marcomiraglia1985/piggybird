@@ -1,10 +1,12 @@
 import { prisma } from "@/lib/prisma";
 import { formatEUR } from "@/lib/utils";
 import Link from "next/link";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, TrendingUp, History } from "lucide-react";
 import { TradingClient } from "@/components/investimenti/trading-client";
 import { CashBalance } from "@/components/investimenti/cash-balance";
 import { StocksRefreshButton } from "@/components/investimenti/stocks-refresh-button";
+import { RichTooltip } from "@/components/ui/rich-tooltip";
+import { ApiConnectionBanner } from "@/components/investimenti/api-connection-banner";
 
 export const dynamic = "force-dynamic";
 
@@ -55,8 +57,16 @@ export default async function TradingPage() {
     0,
   );
   const unrealizedGain = totalCost > 0 ? positionsTotal - totalCost : 0;
-  const realizedGainEur = realized.reduce((s, r) => s + r.pnl * (r.currency === "USD" ? 0.92 : 1), 0); // approx
-  const realizedGainNative = realized.reduce((s, r) => s + r.pnl, 0);
+
+  // Realized P/L convertito in EUR. fxAtSell viene popolato durante l'import:
+  // se è 1.0 ma currency!=EUR, fallback a una stima conservativa (current
+  // platform FX corrente, dalla prima posizione con quella currency).
+  const usdFxApprox =
+    enriched.find((p) => p.currency === "USD")?.fxToEur ?? 0.92;
+  const realizedGainEur = realized.reduce((s, r) => {
+    const fx = r.fxAtSell > 0 && r.fxAtSell !== 1.0 ? r.fxAtSell : (r.currency === "USD" ? usdFxApprox : 1);
+    return s + r.pnl * fx;
+  }, 0);
 
   // Breakdown by assetType (+ cash come voce a parte)
   const byType: Record<string, number> = {};
@@ -96,6 +106,8 @@ export default async function TradingPage() {
         </div>
       </header>
 
+      <ApiConnectionBanner status="manual" />
+
       {/* Hero */}
       <div className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-gradient-to-br from-violet-500/10 via-[var(--surface)] to-indigo-500/10 p-8">
         <div className="pointer-events-none absolute -top-20 -right-20 size-72 rounded-full bg-violet-500/20 blur-3xl" />
@@ -116,7 +128,25 @@ export default async function TradingPage() {
             </div>
             {totalCost > 0 && (
               <div className="sm:text-right">
-                <div className="text-xs uppercase tracking-widest text-[var(--fg-muted)] mb-2">
+                <div className="text-xs uppercase tracking-widest text-[var(--fg-muted)] mb-2 inline-flex items-center gap-1 sm:justify-end">
+                  <RichTooltip
+                    title="Unrealized P/L"
+                    icon={<TrendingUp className="size-3.5 text-violet-400" />}
+                    align="right"
+                  >
+                    <p>
+                      Calcolato applicando il <strong>tasso di cambio corrente</strong> sia al cost basis che al value:
+                    </p>
+                    <p className="font-mono text-[10px] bg-[var(--color-surface-2)] border border-[var(--color-border)] rounded p-1.5 text-center">
+                      shares × (currentPrice − avgCost) × fxToEur
+                    </p>
+                    <p>
+                      <strong>Differenza con Revolut</strong>: Revolut usa il FX al momento dell&apos;acquisto per il cost basis. Con USD apprezzato/deprezzato vs EUR negli anni, la differenza può essere di <strong>centinaia di euro</strong> su portfolio multi-currency.
+                    </p>
+                    <p className="text-[10px] text-[var(--color-fg-subtle)] pt-2 border-t border-[var(--color-border)]/50">
+                      Il valore mostrato qui è P/L &quot;al netto del FX&quot; — non riflette il guadagno/perdita di cambio.
+                    </p>
+                  </RichTooltip>
                   Unrealized P/L
                 </div>
                 <div
@@ -160,13 +190,28 @@ export default async function TradingPage() {
 
           {realized.length > 0 && (
             <div className="pt-4 border-t border-[var(--border)] flex flex-wrap gap-x-6 gap-y-2 text-sm">
-              <div>
+              <div className="inline-flex items-center gap-1">
+                <RichTooltip
+                  title="Realized P/L"
+                  icon={<History className="size-3.5 text-violet-400" />}
+                  align="left"
+                >
+                  <p>
+                    Somma dei P/L dei trade chiusi, convertiti in EUR.
+                  </p>
+                  <p>
+                    Quando disponibile usa il <strong>fxAtSell</strong> del trade (popolato durante l&apos;import); altrimenti fallback al <strong>cambio corrente</strong>.
+                  </p>
+                  <p className="text-[10px] text-[var(--color-fg-subtle)] pt-2 border-t border-[var(--color-border)]/50">
+                    Può differire da Revolut di qualche % su trade vecchi (FX storico approssimato).
+                  </p>
+                </RichTooltip>
                 <span className="text-[var(--fg-muted)]">Realized P/L (storico): </span>
                 <span
-                  className={`font-medium tabular-nums ${realizedGainNative >= 0 ? "text-emerald-400" : "text-rose-400"}`}
+                  className={`font-medium tabular-nums ${realizedGainEur >= 0 ? "text-emerald-400" : "text-rose-400"}`}
                 >
-                  {realizedGainNative >= 0 ? "+" : ""}
-                  ${realizedGainNative.toFixed(2)} (mix valute)
+                  {realizedGainEur >= 0 ? "+" : ""}
+                  {formatEUR(realizedGainEur)}
                 </span>
               </div>
               <div className="text-xs text-[var(--fg-subtle)]">

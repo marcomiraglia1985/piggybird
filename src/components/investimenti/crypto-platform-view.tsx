@@ -6,6 +6,8 @@ import { CryptoSyncButton } from "@/components/investimenti/crypto-sync-button";
 import { RevolutXSyncButton } from "@/components/investimenti/revolut-x-sync-button";
 import { CryptoCostBasisEditor } from "@/components/investimenti/crypto-cost-basis-editor";
 import { InvestmentSummaryEditor } from "@/components/investimenti/investment-summary-editor";
+import { ApiConnectionBanner } from "@/components/investimenti/api-connection-banner";
+import { getCredentialStatus } from "@/lib/credentials";
 
 const SOURCE_LABELS: Record<string, string> = {
   spot: "Spot",
@@ -100,6 +102,24 @@ export async function CryptoPlatformView({
         )
       : null;
 
+  // Stato API per il banner: connected se la credential è in DB, available
+  // se il provider ha API supportata ma manca la credential, manual se il
+  // provider non ha integration API (es. broker che useremo via CSV).
+  const credConfigured = syncProvider
+    ? await getCredentialStatus(syncProvider)
+    : false;
+  const apiBannerStatus: "connected" | "available" | "manual" = syncProvider
+    ? credConfigured
+      ? "connected"
+      : "available"
+    : "manual";
+  const providerLabel =
+    syncProvider === "binance"
+      ? "Binance"
+      : syncProvider === "revolut-x"
+        ? "Revolut X"
+        : platform;
+
   return (
     <div className="space-y-6">
       <header>
@@ -127,6 +147,11 @@ export async function CryptoPlatformView({
           )}
         </div>
       </header>
+
+      <ApiConnectionBanner
+        status={apiBannerStatus}
+        providerLabel={apiBannerStatus !== "manual" ? providerLabel : undefined}
+      />
 
       {positions.length === 0 ? (
         <>

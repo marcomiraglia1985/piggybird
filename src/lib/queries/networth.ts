@@ -1,8 +1,13 @@
 import { prisma } from "../prisma";
+import { roundEur } from "../utils";
 
 /**
  * Net worth corrente: ogni saldo è moltiplicato per `ownershipShare`
  * (es. cointestato 2/3) per riflettere la quota effettivamente posseduta.
+ *
+ * I totali aggregati passano per `roundEur` per evitare drift Float visibile
+ * (es. 1234.5599999... → 1234.56) — non un fix strutturale del precision-debt
+ * sullo schema, ma rende stabile la dashboard.
  */
 export async function getCurrentNetWorth() {
   const accounts = await prisma.account.findMany({ where: { active: true } });
@@ -26,11 +31,13 @@ export async function getCurrentNetWorth() {
     friendsplitNet = sums.reduce((s, x) => s + (x._sum.amount ?? 0), 0);
   }
 
-  const liquidity = liquidNonFs + friendsplitNet;
-  const savings = accounts.filter((a) => a.type === "savings").reduce((s, a) => s + effective(a), 0);
+  const liquidity = roundEur(liquidNonFs + friendsplitNet);
+  const savings = roundEur(
+    accounts.filter((a) => a.type === "savings").reduce((s, a) => s + effective(a), 0),
+  );
   const investments = await prisma.investment.findMany();
-  const investTotal = investments.reduce((s, i) => s + i.currentValue, 0);
-  const total = liquidity + savings + investTotal;
+  const investTotal = roundEur(investments.reduce((s, i) => s + i.currentValue, 0));
+  const total = roundEur(liquidity + savings + investTotal);
   return { total, liquidity, savings, investments: investTotal };
 }
 

@@ -39,6 +39,17 @@ export function formatEUR(amount: number, opts: { compact?: boolean; signed?: bo
   return formatted;
 }
 
+/**
+ * Arrotonda un valore in euro a 2 decimali. Da usare sui totali aggregati
+ * (NW, sum mensile, ecc.) per evitare drift visibile da accumulo di errori
+ * binari Float (es. 0.1 + 0.2 = 0.30000000000000004). Non risolve il
+ * precision-debt strutturale (vedi schema.prisma) — solo strato di sicurezza
+ * visiva sui valori derivati.
+ */
+export function roundEur(n: number): number {
+  return Math.round(n * 100) / 100;
+}
+
 export function formatNumber(n: number) {
   return numberFormatter.format(n);
 }
