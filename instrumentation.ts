@@ -1,4 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
+import pkg from "./package.json";
+
+const APP_RELEASE = `piggybird@${pkg.version}`;
 
 /**
  * Next.js instrumentation hook: chiamato automaticamente all'avvio del runtime
@@ -26,6 +29,7 @@ export async function register() {
 
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
+      release: APP_RELEASE,
       // Più basso = meno noise; in beta vogliamo TUTTI gli errori reali.
       tracesSampleRate: 0.1,
       // Ignora errori innocui che non sono bug
@@ -73,6 +77,7 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "edge") {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
+      release: APP_RELEASE,
       tracesSampleRate: 0.1,
     });
   }

@@ -1,36 +1,36 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🐤 Piggybird
 
-## Getting Started
+> Personal finance tracker · Mac desktop app · Beta privata
 
-First, run the development server:
+**Status**: 🚧 beta chiusa con un piccolo gruppo di tester. Non è ancora un prodotto pubblico.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## Sei un tester invitato?
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Hai ricevuto l'app via link diretto. Per installarla scarica l'ultimo `.dmg` da **[Releases](https://github.com/marcomiraglia1985/piggybird/releases/latest)** e segui le istruzioni della release (incluso il workaround `xattr -cr` per Gatekeeper, finché l'app non sarà notarizzata Apple).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Aggiornamenti: la app rileva nuove versioni e mostra un badge verde in sidebar. Click → "Scarica" apre il browser sul download.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Sei capitato qui per caso?
 
-## Learn More
+Il repo è temporaneamente pubblico solo per permettere ai beta tester di scaricare i `.dmg` da GitHub Releases senza bisogno di account. Non è un prodotto open-source né un'offerta commerciale: è un side project personale, in fase di test su pochissimi utenti.
 
-To learn more about Next.js, take a look at the following resources:
+A fine beta il repo tornerà privato.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Se ti interessa il progetto, scrivimi: [@marcomiraglia1985](https://github.com/marcomiraglia1985) — niente promesse di accesso, dipende dagli slot disponibili.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Cosa fa
 
-## Deploy on Vercel
+App desktop macOS che traccia conti correnti, risparmi, investimenti (stock + crypto), immobili e spese condivise. Tutti i dati restano sul Mac dell'utente, niente cloud.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Tech stack (per i curiosi)
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- Next.js 16 + React 19 + Turbopack
+- Prisma 7 + better-sqlite3 (DB locale)
+- Tauri 2 (wrap macOS)
+- TailwindCSS
+- Sentry (error tracking)
+- Anthropic Claude API (feature AI on-demand, BYOK)
+
+---
+
+⚠️ **Nessuna licenza pubblica**. Codice fornito as-is per finalità di beta testing privato. Vietata la redistribuzione del binario.

@@ -1,4 +1,7 @@
 import * as Sentry from "@sentry/nextjs";
+import pkg from "./package.json";
+
+const APP_RELEASE = `piggybird@${pkg.version}`;
 
 /**
  * Sentry init lato browser. Viene caricato automaticamente da Next.js
@@ -11,6 +14,7 @@ import * as Sentry from "@sentry/nextjs";
 if (process.env.NEXT_PUBLIC_SENTRY_DSN) {
   Sentry.init({
     dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    release: APP_RELEASE,
     tracesSampleRate: 0.1,
     // Replay disabilitato per privacy: registrerebbe DOM con dati finanziari
     replaysSessionSampleRate: 0,
