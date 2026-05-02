@@ -8,8 +8,8 @@ import { WidgetHelpPopover } from "./widget-help-popover";
 
 type Props = {
   firstDate: string | null;
-  income: number;
-  expense: number; // valore negativo
+  startNetWorth: number | null;
+  currentNetWorth: number | null;
   txCount: number;
 };
 
@@ -50,22 +50,29 @@ function formatStartMonth(iso: string) {
   return `${labels[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
 }
 
-export function AnniversaryWidget({ firstDate, income, expense, txCount }: Props) {
+export function AnniversaryWidget({
+  firstDate,
+  startNetWorth,
+  currentNetWorth,
+  txCount,
+}: Props) {
   const data = useMemo(() => {
     if (!firstDate) return null;
     const { years, months, days } = formatDuration(firstDate);
-    return {
-      years,
-      months,
-      days,
-      saved: income + expense, // expense è già negativo
-      grossThroughput: income + Math.abs(expense),
-    };
-  }, [firstDate, income, expense]);
+    const hasNw = startNetWorth != null && currentNetWorth != null;
+    const delta = hasNw ? currentNetWorth! - startNetWorth! : null;
+    // Crescita relativa: definita solo se NW iniziale è significativamente
+    // diverso da 0 (evita divisione esplosiva con startNW ≈ 0).
+    const pct =
+      hasNw && Math.abs(startNetWorth!) > 100
+        ? (delta! / Math.abs(startNetWorth!)) * 100
+        : null;
+    return { years, months, days, delta, pct };
+  }, [firstDate, startNetWorth, currentNetWorth]);
 
   return (
-    <Card className="p-6 h-[420px] flex flex-col">
-      <CardHeader className="mb-6 shrink-0">
+    <Card className="p-6">
+      <CardHeader className="mb-4">
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Cake className="size-4 text-pink-400" />
@@ -75,27 +82,29 @@ export function AnniversaryWidget({ firstDate, income, expense, txCount }: Props
         <WidgetHelpPopover title="Anniversary">
           <p>
             <strong className="text-[var(--fg)]">Quanto a lungo stai
-            trackando le tue finanze</strong>, dal primo movimento confermato
-            in DB ad oggi.
+            trackando le tue finanze.</strong> Si parte dalla data più antica
+            tra primo movimento e primo snapshot Net Worth — coerente con il
+            grafico Net Worth.
           </p>
           <p>
-            Le statistiche aggregate mostrano l&apos;ammontare totale di
-            entrate e uscite — utili per avere il colpo d&apos;occhio sul
-            volume di soldi che è passato dai tuoi conti negli anni.
+            Δ Net Worth mostra di quanto è cresciuto (o calato) il patrimonio
+            dal primo snapshot ad oggi. È un numero robusto: include capex
+            (investimenti, immobili) e applica le quote dei conti cointestati.
           </p>
           <p className="text-[10px] text-[var(--fg-subtle)] pt-1 border-t border-[var(--border)]">
-            💡 Mostra solo i movimenti confermati e non-transfer interni.
+            💡 Movimenti = transazioni confermate non-transfer. Δ% calcolato
+            solo se il NW iniziale è ≠ 0.
           </p>
         </WidgetHelpPopover>
       </CardHeader>
-      <CardContent className="space-y-0 flex-1 flex flex-col min-h-0">
+      <CardContent className="space-y-4">
         {!data || !firstDate ? (
-          <p className="text-xs text-[var(--fg-subtle)] py-6 text-center">
+          <p className="text-xs text-[var(--fg-subtle)] py-2 text-center">
             Nessun movimento tracciato.
           </p>
         ) : (
-          <div className="flex flex-col flex-1 justify-between min-h-0">
-            <div className="text-center space-y-2">
+          <>
+            <div className="text-center space-y-1">
               <div className="text-[10px] uppercase tracking-widest text-[var(--fg-muted)]">
                 Stai trackando da
               </div>
@@ -104,26 +113,49 @@ export function AnniversaryWidget({ firstDate, income, expense, txCount }: Props
                 <Big n={data.months} label={data.months === 1 ? "mese" : "mesi"} />
                 <Big n={data.days} label={data.days === 1 ? "giorno" : "giorni"} small />
               </div>
-              <div className="text-[11px] text-[var(--fg-subtle)] pt-1">
+              <div className="text-[11px] text-[var(--fg-subtle)]">
                 Dal {formatStartMonth(firstDate)}
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 pt-4 border-t border-[var(--border)]">
+            <div className="grid grid-cols-2 gap-3 pt-3 border-t border-[var(--border)]">
               <Stat
-                label="Entrate"
-                value={formatEUR(income, { compact: true })}
-                color="emerald"
+                label="NW iniziale"
+                value={
+                  startNetWorth != null
+                    ? formatEUR(startNetWorth, { compact: true })
+                    : "—"
+                }
+                color="violet"
               />
               <Stat
-                label="Uscite"
-                value={formatEUR(expense, { compact: true })}
-                color="rose"
+                label="NW attuale"
+                value={
+                  currentNetWorth != null
+                    ? formatEUR(currentNetWorth, { compact: true })
+                    : "—"
+                }
+                color="violet"
               />
               <Stat
-                label="Saldo netto"
-                value={`${data.saved >= 0 ? "+" : ""}${formatEUR(data.saved, { compact: true })}`}
-                color={data.saved >= 0 ? "emerald" : "rose"}
+                label="Δ Net Worth"
+                value={
+                  data.delta != null
+                    ? `${data.delta >= 0 ? "+" : ""}${formatEUR(data.delta, { compact: true })}`
+                    : "—"
+                }
+                hint={
+                  data.pct != null
+                    ? `${data.pct >= 0 ? "+" : ""}${data.pct.toFixed(1)}%`
+                    : undefined
+                }
+                color={
+                  data.delta == null
+                    ? "violet"
+                    : data.delta >= 0
+                      ? "emerald"
+                      : "rose"
+                }
               />
               <Stat
                 label="Movimenti"
@@ -131,7 +163,7 @@ export function AnniversaryWidget({ firstDate, income, expense, txCount }: Props
                 color="violet"
               />
             </div>
-          </div>
+          </>
         )}
       </CardContent>
     </Card>
@@ -141,7 +173,7 @@ export function AnniversaryWidget({ firstDate, income, expense, txCount }: Props
 function Big({ n, label, small }: { n: number; label: string; small?: boolean }) {
   return (
     <div className="flex flex-col items-center">
-      <span className={small ? "text-2xl font-semibold" : "text-4xl font-semibold"}>
+      <span className={small ? "text-xl font-semibold" : "text-3xl font-semibold"}>
         {n}
       </span>
       <span className="text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
@@ -154,10 +186,12 @@ function Big({ n, label, small }: { n: number; label: string; small?: boolean })
 function Stat({
   label,
   value,
+  hint,
   color,
 }: {
   label: string;
   value: string;
+  hint?: string;
   color: "emerald" | "rose" | "violet";
 }) {
   const tone = {
@@ -170,7 +204,14 @@ function Stat({
       <span className="text-[10px] uppercase tracking-wider text-[var(--fg-muted)]">
         {label}
       </span>
-      <span className={`text-base font-medium tabular-nums ${tone}`}>{value}</span>
+      <span className={`text-base font-medium tabular-nums ${tone}`}>
+        {value}
+        {hint && (
+          <span className="text-[10px] text-[var(--fg-subtle)] ml-1.5 font-normal">
+            ({hint})
+          </span>
+        )}
+      </span>
     </div>
   );
 }

@@ -25,15 +25,25 @@ export function WidgetSettingsPopover({
   useEffect(() => {
     if (!open) return;
     function onDoc(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+      const target = e.target as Element | null;
+      if (ref.current && target && !ref.current.contains(target)) {
+        // Ignora click su portali figli (es. CategoryPicker dropdown renderizzato
+        // su document.body): altrimenti si chiude prima che il click handler
+        // interno al portal possa registrarsi → selezione persa.
+        if (target.closest?.("[data-widget-popover-portal]")) return;
+        setOpen(false);
+      }
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") setOpen(false);
     }
-    document.addEventListener("mousedown", onDoc);
+    // Usiamo "click" invece di "mousedown" così, anche senza data-attr,
+    // l'onClick del child fires prima del nostro close (i sotto-componenti
+    // si comportano come previsto).
+    document.addEventListener("click", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("click", onDoc);
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);

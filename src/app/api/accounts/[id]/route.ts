@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { getFreezeState, setFreezeState } from "@/lib/account-freeze";
+import { getProvidersForAccountType } from "@/lib/account-providers";
 
 export const runtime = "nodejs";
 
@@ -13,6 +14,9 @@ const PatchSchema = z.object({
   ownershipShare: z.number().min(0).max(1).optional(),
   interestRateAnnual: z.number().nonnegative().nullable().optional(),
   notes: z.string().trim().nullable().optional(),
+  /** Provider esterno (per gating delle integrazioni in Impostazioni). Validato
+   *  contro la lista in account-providers + compatibilità con account.type. */
+  provider: z.string().trim().min(1).optional(),
   /** Per friendsplit: lista membri del gruppo. Salvata come JSON in membersJson. */
   members: z.array(z.object({ name: z.string().trim().min(1) })).optional(),
   /** Se true, salta la creazione del movimento di rettifica
@@ -51,6 +55,19 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
       data: { ownershipShare: account.ownershipShare },
     });
     snapshottedTxCount = r.count;
+  }
+
+  // Validazione provider: deve essere compatibile col type del conto
+  if (updates.provider !== undefined) {
+    const compatible = getProvidersForAccountType(account.type);
+    if (!compatible.find((p) => p.id === updates.provider)) {
+      return NextResponse.json(
+        {
+          error: `Provider "${updates.provider}" non compatibile con conti di tipo "${account.type}".`,
+        },
+        { status: 400 },
+      );
+    }
   }
 
   // Chiusura conto: setta closedAt al momento corrente
@@ -150,6 +167,53 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     await setFreezeState(true, new Date());
   }
 
+  // Sync paired Investment row when account is type=investment. Cambi a
+  // currentBalance, name (rename), provider (→ platform), o close (active=false)
+  // si propagano alla Investment per tenere /investimenti allineato senza
+  // sapere nulla di Account.
+  if (account.type === "investment") {
+    const inv = await prisma.investment.findUnique({
+      where: { name: account.name },
+    });
+    if (inv) {
+      const invUpdates: {
+        name?: string;
+        platform?: string;
+        currentValue?: number;
+      } = {};
+      if (updates.name && updates.name !== account.name) {
+        invUpdates.name = updates.name;
+      }
+      if (
+        updates.provider !== undefined &&
+        updates.provider !== account.provider
+      ) {
+        // Aggiorna platform usando la stessa mappa del POST
+        invUpdates.platform =
+          updates.provider === "binance"
+            ? "Binance"
+            : updates.provider === "revolut-x"
+              ? "Revolut X"
+              : updates.name ?? account.name;
+      }
+      if (updates.currentBalance !== undefined) {
+        invUpdates.currentValue = updates.currentBalance;
+      }
+      if (Object.keys(invUpdates).length > 0) {
+        await prisma.investment.update({
+          where: { id: inv.id },
+          data: invUpdates,
+        });
+      }
+      // Account chiuso → cancella Investment row così non appare più su
+      // /investimenti (il conto resta in "Chiusi/Migrati" su /conti per la
+      // history, ma non si vuole vederlo come posizione attiva).
+      if (updates.active === false && account.active) {
+        await prisma.investment.delete({ where: { id: inv.id } });
+      }
+    }
+  }
+
   return NextResponse.json({
     id: updated.id,
     currentBalance: updated.currentBalance,
@@ -191,6 +255,13 @@ export async function DELETE(req: NextRequest, ctx: { params: Promise<{ id: stri
       },
       { status: 409 },
     );
+  }
+  // Cancella la Investment row paired (se esiste) prima dell'Account: legate
+  // per nome, no FK quindi la pulizia è esplicita.
+  if (account.type === "investment") {
+    await prisma.investment
+      .deleteMany({ where: { name: account.name } })
+      .catch(() => null);
   }
   await prisma.account.delete({ where: { id } });
   return NextResponse.json({ deleted: id, txCascaded: 0 });

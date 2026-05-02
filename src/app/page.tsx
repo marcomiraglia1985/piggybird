@@ -13,7 +13,7 @@ import {
   getTopExpenses,
   getRecentTransactions,
   getLifetimeStats,
-  getCategoryYearStats,
+  getCategoryStatsMulti,
   getAllCategoriesLight,
 } from "@/lib/queries/transactions";
 import { prisma } from "@/lib/prisma";
@@ -58,7 +58,6 @@ export default async function Dashboard() {
     investGain,
     freezeState,
     ownedEstates,
-    lifetime,
     categoryStats,
     allCategories,
     stockIrrInputs,
@@ -87,14 +86,17 @@ export default async function Dashboard() {
         ownershipShare: true,
       },
     }),
-    getLifetimeStats(),
-    getCategoryYearStats(year),
+    getCategoryStatsMulti(year),
     getAllCategoriesLight(),
     getStockIrrInputs(),
     getSpyMonthlySeries(),
     getWorldLandPath(),
     getFxStalenessReport(),
   ]);
+
+  // Lifetime stats prende il NW attuale (per Δ vs primo snapshot), quindi va
+  // dopo il Promise.all che risolve `current`. Query interne sono leggere.
+  const lifetime = await getLifetimeStats(current.total);
 
   // Tutti gli estate attivi (per il CategoryPicker dei widget). Diverso da
   // ownedEstates perché qui includiamo anche gli affitti per non perdere il
@@ -217,8 +219,8 @@ export default async function Dashboard() {
               <AnniversaryWidget
                 key="anniversary"
                 firstDate={lifetime?.firstDate ?? null}
-                income={lifetime?.income ?? 0}
-                expense={lifetime?.expense ?? 0}
+                startNetWorth={lifetime?.startNetWorth ?? null}
+                currentNetWorth={lifetime?.currentNetWorth ?? null}
                 txCount={lifetime?.txCount ?? 0}
               />
             ),

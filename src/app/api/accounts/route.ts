@@ -27,7 +27,18 @@ const CreateSchema = z.object({
   currentBalance: z.number().default(0),
   /** Per type=friendsplit: lista membri JSON `[{name}]`. Ignored per altri tipi. */
   members: z.array(z.object({ name: z.string().trim().min(1) })).optional(),
+  /** Per type=investment: classe asset, alimenta /investimenti via Investment row. */
+  assetClass: z.enum(["stocks", "crypto", "metals"]).optional(),
 });
+
+/** Mappa provider → platform usato dalla Investment row (allineato con i check
+ *  hardcoded in /investimenti/page.tsx: "Binance" / "Revolut X" / generico). */
+function platformFromProvider(provider: string, accountName: string): string {
+  if (provider === "binance") return "Binance";
+  if (provider === "revolut-x") return "Revolut X";
+  // Generic: usa il nome del conto come platform (es. Coinbase, eToro, ecc.)
+  return accountName;
+}
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
@@ -69,5 +80,23 @@ export async function POST(req: NextRequest) {
       membersJson,
     },
   });
+
+  // Auto-create paired Investment row when type=investment so that the new
+  // broker appears immediately on /investimenti without requiring a separate
+  // setup step. Account.name is used as Investment.name (1:1 link, used poi
+  // dal sync su PATCH balance).
+  if (data.type === "investment" && data.assetClass) {
+    await prisma.investment.create({
+      data: {
+        name: data.name,
+        type: data.assetClass,
+        platform: platformFromProvider(data.provider, data.name),
+        currentValue: data.currentBalance,
+        currency: data.currency.toUpperCase(),
+        displayOrder: (maxOrder._max.displayOrder ?? 0) + 1,
+      },
+    });
+  }
+
   return NextResponse.json({ account });
 }

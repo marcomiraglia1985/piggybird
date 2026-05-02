@@ -115,7 +115,8 @@ export default async function InvestimentiPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Investimenti</h1>
           <p className="text-sm text-[var(--color-fg-muted)] mt-0.5">
-            Snapshot del portfolio · {investments.length} posizioni
+            Snapshot del portfolio · {investments.length}{" "}
+            {investments.length === 1 ? "conto" : "conti"} broker
           </p>
         </div>
         <div className="flex flex-col items-end gap-2">
@@ -259,7 +260,7 @@ export default async function InvestimentiPage() {
 
       <div>
         <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)] mb-3 px-1">
-          Posizioni
+          Conti broker
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {investments.map((inv) => {

@@ -33,6 +33,11 @@ export function NewAccountForm() {
   const [emoji, setEmoji] = useState("");
   const [ownership, setOwnership] = useState("1");
   const [balance, setBalance] = useState("0");
+  /** Solo per type=investment: classe asset (stocks/crypto/metals).
+   *  Determina come la posizione apparirà su /investimenti. */
+  const [assetClass, setAssetClass] = useState<"stocks" | "crypto" | "metals">(
+    "crypto",
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -65,6 +70,7 @@ export function NewAccountForm() {
           emoji: emoji.trim() || selected.emoji,
           ownershipShare: parseFloat(ownership),
           currentBalance: parseFloat(balance) || 0,
+          ...(type === "investment" ? { assetClass } : {}),
         }),
       });
       if (!res.ok) {
@@ -104,6 +110,44 @@ export function NewAccountForm() {
           ))}
         </div>
       </div>
+
+      {type === "investment" && (
+        <div className="space-y-2">
+          <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+            Classe asset
+            <span className="text-[var(--fg-subtle)] normal-case tracking-normal ml-1">
+              (cosa contiene il broker)
+            </span>
+          </label>
+          <div className="grid grid-cols-3 gap-2">
+            {[
+              { v: "stocks", label: "Azioni / ETF", emoji: "📈" },
+              { v: "crypto", label: "Crypto", emoji: "🪙" },
+              { v: "metals", label: "Metalli", emoji: "🥇" },
+            ].map((a) => (
+              <button
+                key={a.v}
+                type="button"
+                onClick={() => setAssetClass(a.v as typeof assetClass)}
+                className={`p-2.5 rounded-lg border transition-colors text-left ${
+                  assetClass === a.v
+                    ? "border-violet-500/50 bg-violet-500/10"
+                    : "border-[var(--border)] bg-[var(--surface-2)]/40 hover:border-[var(--border-strong)]"
+                }`}
+              >
+                <div className="flex items-center gap-1.5">
+                  <span>{a.emoji}</span>
+                  <span className="font-medium text-xs">{a.label}</span>
+                </div>
+              </button>
+            ))}
+          </div>
+          <p className="text-[10px] text-[var(--fg-subtle)] leading-relaxed">
+            Determina dove appare su <em>/investimenti</em> e come viene
+            colorata la card su <em>/conti</em>.
+          </p>
+        </div>
+      )}
 
       {providersForType.length > 1 && (
         <div className="space-y-2">

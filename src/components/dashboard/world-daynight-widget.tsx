@@ -80,6 +80,13 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
   // Compact mode quando il widget è narrow (1-col layout): mostra lista
   // borse + orario locale + stato invece della mappa (illeggibile <500px).
   const [compact, setCompact] = useState(false);
+  // Cap delle borse visibili allineato a WorldClocksWidget per coerenza:
+  //   width < 700px (1 col del grid dashboard) → max 4 borse
+  //   width >= 700px (2 col del grid dashboard) → max 8 borse
+  // I due widget condividono la stessa lista in storage (key
+  // "market-favorites"); il cap garantisce che entrambi mostrino lo stesso
+  // numero di borse a parità di layout.
+  const [maxExchanges, setMaxExchanges] = useState(8);
 
   useEffect(() => {
     setNow(new Date());
@@ -93,14 +100,26 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       setCompact(w > 0 && w < COMPACT_WIDTH);
+      if (w === 0) return;
+      if (w < 700) setMaxExchanges(4);
+      else setMaxExchanges(8);
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, []);
 
   const visibleExchanges = useMemo(
-    () => ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)),
-    [opts.exchanges],
+    () =>
+      ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)).slice(
+        0,
+        maxExchanges,
+      ),
+    [opts.exchanges, maxExchanges],
+  );
+  const hiddenCount = Math.max(
+    0,
+    ALL_EXCHANGES.filter((ex) => opts.exchanges.includes(ex.id)).length -
+      visibleExchanges.length,
   );
 
   const data = useMemo(() => {
@@ -366,6 +385,12 @@ export function WorldDayNightWidget({ landPath = null }: Props = {}) {
               </svg>
             </div>
           </>
+        )}
+        {hiddenCount > 0 && (
+          <p className="text-[10px] text-[var(--fg-subtle)] text-center pt-3 border-t border-[var(--border)]/50 mt-3">
+            +{hiddenCount} {hiddenCount === 1 ? "borsa nascosta" : "borse nascoste"} —
+            allarga il widget per vederle tutte.
+          </p>
         )}
       </CardContent>
     </Card>

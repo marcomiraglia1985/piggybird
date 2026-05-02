@@ -21,6 +21,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Archive, X, AlertTriangle, ArrowUpRight } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { BalanceEditor } from "@/components/conti/balance-editor";
+import { AccountSettingsPopover } from "@/components/conti/account-settings-popover";
 import { useToast } from "@/components/ui/toast";
 
 type Account = {
@@ -33,8 +34,20 @@ type Account = {
   /** Saldo da mostrare: in modalità Frozen = currentBalance, in Live = currentBalance + tx confermate dopo frozenAt. */
   displayBalance?: number;
   ownershipShare: number;
-  /** Conteggio movimenti collegati al conto */
+  /** Provider esterno per gating integrazioni (generic | binance | revolut-x | ...) */
+  provider?: string;
+  /** Sottotipo per type=investment (stocks/crypto/metals/...) — usato per i colori card. */
+  investmentSubtype?: string | null;
+  /** True se il provider del conto ha una credential API configurata in Impostazioni → Integrazioni. */
+  apiActive?: boolean;
+  /** Conteggio movimenti collegati al conto.
+   *  Per type=investment è il numero di trade (BUY/SELL) dal broker, non
+   *  i Transaction records. */
   txCount?: number;
+  /** Per type=investment: pagina di dettaglio dei trade (StockTrade/CryptoTrade)
+   *  associata al broker (es. /investimenti/stocks). Se valorizzato, il link
+   *  "X movimenti →" punta qui invece che a /movimenti?account=id. */
+  tradesHref?: string | null;
 };
 
 const TYPE_TO_PAGE: Record<string, { href: string; label: string }> = {
@@ -51,6 +64,21 @@ const TYPE_COLORS: Record<string, string> = {
   investment: "from-violet-500/20 to-violet-500/5 border-violet-500/20",
   credit: "from-blue-500/20 to-blue-500/5 border-blue-500/20",
 };
+
+// Override per type=investment con sottotipo specifico — coerente con i
+// colori della pagina /investimenti (stocks azzurro, crypto viola).
+const INVESTMENT_SUBTYPE_COLORS: Record<string, string> = {
+  stocks: "from-sky-500/20 to-sky-500/5 border-sky-500/20",
+  metals: "from-amber-500/20 to-amber-500/5 border-amber-500/20",
+  crypto: "from-violet-500/20 to-violet-500/5 border-violet-500/20",
+};
+
+function cardColors(a: { type: string; investmentSubtype?: string | null }): string {
+  if (a.type === "investment" && a.investmentSubtype) {
+    return INVESTMENT_SUBTYPE_COLORS[a.investmentSubtype] ?? TYPE_COLORS.investment;
+  }
+  return TYPE_COLORS[a.type] ?? TYPE_COLORS.liquid;
+}
 
 function shareLabel(share: number): string | null {
   if (share >= 1) return null;
@@ -128,13 +156,22 @@ function StaticCard({ a }: { a: Account }) {
   const share = shareLabel(a.ownershipShare);
   return (
     <div
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${TYPE_COLORS[a.type] ?? TYPE_COLORS.liquid} p-5`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${cardColors(a)} p-5`}
     >
       <div className="flex items-center justify-between mb-4">
         <div className="size-10 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-xl">
           {a.emoji ?? "💳"}
         </div>
         <div className="flex items-center gap-1.5">
+          {a.apiActive && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium"
+              title="API collegata: sync automatica attiva"
+            >
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              API
+            </span>
+          )}
           {share && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20 font-medium">
               {share}
@@ -189,7 +226,7 @@ function SortableCard({ a, locked }: { a: Account; locked: boolean }) {
       style={style}
       {...attributes}
       {...listeners}
-      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${TYPE_COLORS[a.type] ?? TYPE_COLORS.liquid} p-5 cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-10 opacity-80 shadow-2xl" : ""}`}
+      className={`group relative overflow-hidden rounded-2xl border bg-gradient-to-br ${cardColors(a)} p-5 cursor-grab active:cursor-grabbing select-none ${isDragging ? "z-10 opacity-80 shadow-2xl" : ""}`}
       title="Trascina per riordinare"
     >
       <GripVertical className="absolute right-2 top-2 size-3 text-[var(--fg-subtle)] opacity-0 group-hover:opacity-60 pointer-events-none transition-opacity" />
@@ -205,6 +242,11 @@ function SortableCard({ a, locked }: { a: Account; locked: boolean }) {
       >
         <Archive className="size-3" />
       </button>
+      <AccountSettingsPopover
+        accountId={a.id}
+        accountType={a.type}
+        currentProviderId={a.provider ?? "generic"}
+      />
       <AnimatePresence>
         {closeOpen && (
           <motion.div
@@ -300,6 +342,15 @@ function SortableCard({ a, locked }: { a: Account; locked: boolean }) {
           {a.emoji ?? "💳"}
         </div>
         <div className="flex items-center gap-1.5">
+          {a.apiActive && (
+            <span
+              className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium"
+              title="API collegata: sync automatica attiva"
+            >
+              <span className="size-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              API
+            </span>
+          )}
           {share && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-500/10 text-pink-400 border border-pink-500/20 font-medium">
               {share}
@@ -323,7 +374,7 @@ function SortableCard({ a, locked }: { a: Account; locked: boolean }) {
       <div className="mt-1 flex flex-col gap-0.5">
         {a.txCount !== undefined && (
           <Link
-            href={`/movimenti?account=${a.id}`}
+            href={a.tradesHref ?? `/movimenti?account=${a.id}`}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => e.stopPropagation()}
             className="text-[11px] text-violet-400 hover:underline inline-block"

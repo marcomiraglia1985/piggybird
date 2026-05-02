@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { PlusCircle, Sparkles } from "lucide-react";
+import { PlusCircle } from "lucide-react";
 
 /**
  * Banner mostrato sul dashboard quando l'utente non ha ancora alcun conto.
@@ -13,12 +13,17 @@ export function EmptyDashboardBanner() {
   return (
     <div className="surface p-6 mb-4 bg-gradient-to-br from-violet-500/[0.06] via-[var(--surface)] to-indigo-500/[0.04] border border-violet-500/30">
       <div className="flex items-start gap-4">
-        <div className="size-12 rounded-xl bg-violet-500/15 border border-violet-500/30 flex items-center justify-center shrink-0">
-          <Sparkles className="size-6 text-violet-400" />
+        <div className="size-12 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center shrink-0 overflow-hidden">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/piggybird-icon.png"
+            alt="Piggybird"
+            className="size-10 object-contain"
+          />
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="text-lg font-semibold tracking-tight">
-            Benvenuto su Piggybird 🐤
+            Benvenuto su Piggybird
           </h2>
           <p className="text-sm text-[var(--fg-muted)] mt-1 leading-relaxed">
             Per iniziare aggiungi il tuo primo conto: corrente, contanti, risparmi

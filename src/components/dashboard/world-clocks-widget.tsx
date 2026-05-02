@@ -27,10 +27,12 @@ export function WorldClocksWidget() {
   const [opts, setOpts, reset] = useWidgetSettings("market-favorites", DEFAULTS);
   const [now, setNow] = useState<Date | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  // Limite orologi visibili in base alla larghezza:
-  //   width < 500px (1 col) → max 4 orologi
-  //   width < 900px (2 col) → max 8 orologi
-  //   altrimenti (non dovrebbe accadere — maxSpan=2): tutti
+  // Limite orologi visibili in base alla larghezza della card:
+  //   width < 700px (1 col del grid dashboard) → max 4 orologi
+  //   width >= 700px (2 col del grid dashboard) → max 8 orologi
+  // Nota: card a span=1 in dashboard sono tipicamente 500-650px, quindi
+  // breakpoint a 700 evita che un 1-col mostri 8 clocks (era il bug
+  // segnalato 2026-05-02).
   const [maxClocks, setMaxClocks] = useState(8);
 
   useEffect(() => {
@@ -45,9 +47,8 @@ export function WorldClocksWidget() {
     const ro = new ResizeObserver((entries) => {
       const w = entries[0]?.contentRect.width ?? 0;
       if (w === 0) return;
-      if (w < 500) setMaxClocks(4);
-      else if (w < 900) setMaxClocks(8);
-      else setMaxClocks(99); // wide: nessun limite (in pratica non avviene perché maxSpan=2)
+      if (w < 700) setMaxClocks(4); // 1-col card
+      else setMaxClocks(8); // 2-col card
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
@@ -87,8 +88,8 @@ export function WorldClocksWidget() {
 
   return (
     <div ref={containerRef}>
-    <Card className="p-6 @container">
-      <CardHeader className="mb-4">
+    <Card className="p-6 @container h-[420px] flex flex-col">
+      <CardHeader className="mb-4 shrink-0">
         <CardTitle>
           <span className="inline-flex items-center gap-2">
             <Globe2 className="size-4 text-sky-400" />
@@ -121,18 +122,18 @@ export function WorldClocksWidget() {
           </WidgetSettingsPopover>
         </div>
       </CardHeader>
-      <CardContent>
+      <CardContent className="flex-1 flex flex-col min-h-0 gap-2">
         {visible.length === 0 ? (
           <p className="text-xs text-[var(--fg-subtle)] py-6 text-center">
             Nessuna borsa selezionata. Scegli i tuoi preferiti dalle{" "}
             <span className="text-[var(--fg-muted)]">opzioni ⚙</span>.
           </p>
         ) : !clocks ? (
-          <div className="flex flex-wrap justify-center gap-x-3 gap-y-4 py-2">
+          <div className="flex-1 flex flex-wrap items-center justify-center content-center gap-x-4 gap-y-5">
             {visible.map((ex) => (
               <div
                 key={ex.id}
-                className="flex flex-col items-center gap-1.5 opacity-50 w-[110px] @[480px]:w-[140px] @[900px]:w-[180px]"
+                className="flex flex-col items-center gap-1.5 opacity-50 w-[120px] @[480px]:w-[150px] @[900px]:w-[180px]"
               >
                 <ClockFace hour={0} minute={0} open={false} />
                 <span className="text-[10px] font-medium tabular-nums">
@@ -143,16 +144,16 @@ export function WorldClocksWidget() {
           </div>
         ) : (
           <>
-            <p className="text-[11px] text-[var(--fg-subtle)] tabular-nums mb-3">
+            <p className="text-[11px] text-[var(--fg-subtle)] tabular-nums shrink-0">
               {openCount > 0
                 ? `${openCount} ${openCount === 1 ? "borsa aperta" : "borse aperte"} ora`
                 : "Tutte le borse sono chiuse"}
             </p>
-            <div className="flex flex-wrap justify-center gap-x-3 gap-y-4">
+            <div className="flex-1 flex flex-wrap items-center justify-center content-center gap-x-4 gap-y-5 min-h-0">
               {clocks.map(({ ex, time, open, weekend }) => (
                 <div
                   key={ex.id}
-                  className="flex flex-col items-center gap-1.5 w-[110px] @[480px]:w-[140px] @[900px]:w-[180px]"
+                  className="flex flex-col items-center gap-1.5 w-[120px] @[480px]:w-[150px] @[900px]:w-[180px]"
                   title={
                     weekend
                       ? `${ex.city} · weekend, mercati chiusi`
@@ -265,7 +266,7 @@ function ClockFace({
   return (
     <svg
       viewBox="0 0 100 100"
-      className="size-[68px] @[480px]:size-[100px] @[900px]:size-[136px] shrink-0"
+      className="size-[88px] @[480px]:size-[112px] @[900px]:size-[140px] shrink-0"
     >
       <circle
         cx="50"

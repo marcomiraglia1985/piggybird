@@ -53,33 +53,107 @@ export async function getRecentTransactions(limit = 10) {
   });
 }
 
-/**
- * Stats per il widget Category Tracker.
- * Per ogni categoria: totale anno corrente, conteggio movimenti, ultima data.
- * Restituisce solo categorie con almeno una transazione confermata nell'anno.
- */
-export async function getCategoryYearStats(year: number) {
-  const today = new Date();
-  const grouped = await prisma.transaction.groupBy({
-    by: ["categoryId"],
-    where: {
-      year,
-      confirmed: true,
-      date: { lte: today },
-      transferGroupId: null,
-      categoryId: { not: null },
-    },
-    _sum: { amount: true },
-    _count: true,
-    _max: { date: true },
-  });
+export type CategoryPeriodStat = {
+  total: number;
+  count: number;
+  lastDate: string | null;
+};
+export type CategoryMultiStat = {
+  categoryId: string;
+  currentYear: CategoryPeriodStat;
+  prevYear: CategoryPeriodStat;
+  lifetime: CategoryPeriodStat;
+};
 
-  return grouped.map((g) => ({
-    categoryId: g.categoryId as string,
-    total: g._sum.amount ?? 0,
-    count: g._count,
-    lastDate: g._max.date?.toISOString() ?? null,
-  }));
+/**
+ * Stats multi-periodo per i widget categoria-based (Coffee tracker, ecc.).
+ * Per ogni categoria restituisce totali / counts / ultima data per:
+ *   - anno corrente
+ *   - anno precedente
+ *   - lifetime (tutto lo storico confermato)
+ *
+ * Una sola query groupBy per anno: 3 query in parallelo, poi merge per
+ * categoryId. Categorie con 0 movimenti in tutti i periodi vengono escluse.
+ */
+export async function getCategoryStatsMulti(currentYear: number) {
+  const today = new Date();
+  const baseWhere = {
+    confirmed: true,
+    date: { lte: today },
+    transferGroupId: null,
+    categoryId: { not: null as null },
+  };
+
+  const [groupedCurrent, groupedPrev, groupedLifetime] = await Promise.all([
+    prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: { ...baseWhere, year: currentYear },
+      _sum: { amount: true },
+      _count: true,
+      _max: { date: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: { ...baseWhere, year: currentYear - 1 },
+      _sum: { amount: true },
+      _count: true,
+      _max: { date: true },
+    }),
+    prisma.transaction.groupBy({
+      by: ["categoryId"],
+      where: baseWhere,
+      _sum: { amount: true },
+      _count: true,
+      _max: { date: true },
+    }),
+  ]);
+
+  const empty: CategoryPeriodStat = { total: 0, count: 0, lastDate: null };
+  const map = new Map<string, CategoryMultiStat>();
+
+  function ensure(catId: string): CategoryMultiStat {
+    let v = map.get(catId);
+    if (!v) {
+      v = {
+        categoryId: catId,
+        currentYear: { ...empty },
+        prevYear: { ...empty },
+        lifetime: { ...empty },
+      };
+      map.set(catId, v);
+    }
+    return v;
+  }
+
+  for (const g of groupedCurrent) {
+    if (!g.categoryId) continue;
+    const v = ensure(g.categoryId);
+    v.currentYear = {
+      total: g._sum.amount ?? 0,
+      count: g._count,
+      lastDate: g._max.date?.toISOString() ?? null,
+    };
+  }
+  for (const g of groupedPrev) {
+    if (!g.categoryId) continue;
+    const v = ensure(g.categoryId);
+    v.prevYear = {
+      total: g._sum.amount ?? 0,
+      count: g._count,
+      lastDate: g._max.date?.toISOString() ?? null,
+    };
+  }
+  for (const g of groupedLifetime) {
+    if (!g.categoryId) continue;
+    const v = ensure(g.categoryId);
+    v.lifetime = {
+      total: g._sum.amount ?? 0,
+      count: g._count,
+      lastDate: g._max.date?.toISOString() ?? null,
+    };
+  }
+
+  return Array.from(map.values());
 }
 
 /**
@@ -104,39 +178,50 @@ export async function getAllCategoriesLight() {
 
 /**
  * Lifetime stats per il widget Anniversary.
- * - firstDate: data della prima transazione confermata (inizio tracking)
- * - income / expense: somma lifetime di entrate/uscite (esclusi transfer interni)
- * - txCount: numero totale di movimenti non-transfer
+ * - firstDate: prima data tracciata — usa il MINIMO tra primo movimento
+ *   confermato e primo NetWorthSnapshot (allineato al chart Net Worth, che
+ *   parte dal primo snapshot anche se le transazioni sono importate solo
+ *   da una data più recente).
+ * - startNetWorth: total del primo NW snapshot (null se non esistono)
+ * - currentNetWorth: NW attuale (calcolato dal chiamante e passato in)
+ * - txCount: numero totale di movimenti non-transfer confermati
+ *
+ * Niente income/expense da somma transazioni: avrebbero contato anche capex
+ * (acquisti investimenti, anticipi immobili), rettifiche 💸 Unknown e
+ * cointestato senza ownershipShare → numeri inflazionati. Si usa il delta
+ * Net Worth, coerente col chart e robusto.
  */
-export async function getLifetimeStats() {
+export async function getLifetimeStats(currentNetWorth: number) {
   const today = new Date();
-  const firstTx = await prisma.transaction.findFirst({
-    where: { confirmed: true, date: { lte: today } },
-    orderBy: { date: "asc" },
-    select: { date: true },
-  });
-  if (!firstTx) return null;
-
-  const txs = await prisma.transaction.findMany({
-    where: {
-      confirmed: true,
-      date: { lte: today },
-      transferGroupId: null,
-    },
-    select: { amount: true },
-  });
-
-  let income = 0;
-  let expense = 0;
-  for (const tx of txs) {
-    if (tx.amount > 0) income += tx.amount;
-    else expense += tx.amount;
-  }
+  const [firstTx, firstSnap, txCount] = await Promise.all([
+    prisma.transaction.findFirst({
+      where: { confirmed: true, date: { lte: today } },
+      orderBy: { date: "asc" },
+      select: { date: true },
+    }),
+    prisma.netWorthSnapshot.findFirst({
+      orderBy: { month: "asc" },
+      select: { month: true, total: true },
+    }),
+    prisma.transaction.count({
+      where: {
+        confirmed: true,
+        date: { lte: today },
+        transferGroupId: null,
+      },
+    }),
+  ]);
+  // Prendi la data più antica tra le due fonti.
+  const candidates: Date[] = [];
+  if (firstTx) candidates.push(firstTx.date);
+  if (firstSnap) candidates.push(firstSnap.month);
+  if (candidates.length === 0) return null;
+  const firstDate = candidates.reduce((a, b) => (a < b ? a : b));
 
   return {
-    firstDate: firstTx.date.toISOString(),
-    income,
-    expense, // negativo
-    txCount: txs.length,
+    firstDate: firstDate.toISOString(),
+    startNetWorth: firstSnap?.total ?? null,
+    currentNetWorth,
+    txCount,
   };
 }

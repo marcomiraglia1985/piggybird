@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import Link from "next/link";
-import { TrendingUp, ArrowUpRight, Plus, Wallet } from "lucide-react";
+import { ArrowUpRight, Plus, Wallet } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatEUR, cn } from "@/lib/utils";
 import { BalanceEditor } from "@/components/conti/balance-editor";
@@ -8,26 +8,6 @@ import { SortableAccountsGrid } from "@/components/conti/sortable-accounts-grid"
 import { FreezeToggle } from "@/components/conti/freeze-toggle";
 import { ClosedAccountActions } from "@/components/conti/closed-account-actions";
 import { getFreezeState, getDisplayBalances } from "@/lib/account-freeze";
-
-/** Conti che non vogliamo mostrare nella pagina /conti perché il loro valore
- *  reale è tracciato altrove (es. account collegato a Investment via API → la
- *  card Investimenti aggrega tutto, mostrarli anche qui sarebbe doppio).
- *
- *  Regola attuale: nascondi i conti type=investment con provider != "generic"
- *  (cioè con API integration: binance, revolut-x, ecc) E i conti generici
- *  con name che corrisponde al label di un Investment row aggregato.
- *
- *  TODO universal-app: sostituire con flag `Account.hiddenFromConti: boolean`
- *  o derivare da relazione esplicita Account ↔ Investment row. Per ora la
- *  logica è data-driven, no name hardcoding.
- */
-function isHiddenFromConti(account: { type: string; provider: string; name: string }, investmentNames: Set<string>): boolean {
-  // Account investment con provider API → tracciato in /investimenti
-  if (account.type === "investment" && account.provider !== "generic") return true;
-  // Account il cui nome corrisponde a un Investment row (aggregato sintetico)
-  if (investmentNames.has(account.name)) return true;
-  return false;
-}
 
 export const dynamic = "force-dynamic";
 
@@ -70,18 +50,93 @@ export default async function ContiPage() {
   });
   const txCountByAccount: Record<string, number> = {};
   for (const t of txCounts) txCountByAccount[t.accountId] = t._count._all;
+
+  // Per i conti type=investment lo storico "vero" delle operazioni è in
+  // CryptoTrade / StockTrade (legati per `platform`, non per accountId).
+  // Sommiamo questi conteggi al txCount così la card mostra il totale dei
+  // movimenti reali del broker.
+  const [cryptoTradesByPlat, stockTradesByPlat] = await Promise.all([
+    prisma.cryptoTrade.groupBy({ by: ["platform"], _count: { _all: true } }),
+    prisma.stockTrade.groupBy({ by: ["platform"], _count: { _all: true } }),
+  ]);
+  const cryptoTradesByPlatMap = new Map(
+    cryptoTradesByPlat.map((b) => [b.platform, b._count._all]),
+  );
+  const stockTradesByPlatMap = new Map(
+    stockTradesByPlat.map((b) => [b.platform, b._count._all]),
+  );
   const freezeState = await getFreezeState();
   // Inietta `displayBalance` su ogni account: in modalità Frozen è uguale al
   // currentBalance; in Live = currentBalance + tx confermate dopo frozenAt.
   const allAccounts = await getDisplayBalances(allAccountsRaw);
 
+  // Investment table: aggregati cross-broker per /investimenti page. Su /conti
+  // mostriamo i conti type=investment (le "posizioni broker") direttamente come
+  // card. `investTotal` è la fonte autorevole degli investimenti (allineata col
+  // KPI hero della dashboard) e va usata nella header summary; i singoli conti
+  // investment usano la propria currentBalance per la card individuale.
   const investments = await prisma.investment.findMany();
   const investTotal = investments.reduce((s, i) => s + i.currentValue, 0);
-  const investmentNames = new Set(investments.map((i) => i.name));
 
-  const active = allAccounts.filter(
-    (a) => a.active && !isHiddenFromConti(a, investmentNames),
-  );
+  // Provider con credential API configurata (per badge "API attiva" sulle card).
+  const apiCreds = await prisma.apiCredential.findMany({ select: { provider: true } });
+  const apiActiveProviders = new Set(apiCreds.map((c) => c.provider));
+
+  // Per ogni Account type=investment deriviamo il "subtype" (stocks/crypto/metals)
+  // matchando con la corrispondente Investment row (per platform). Universal-app:
+  // funziona finché l'utente nomina l'Account in modo riconoscibile o ha un
+  // provider linkato a una platform. Fallback: stocks per generic.
+  function inferInvestmentSubtype(account: { name: string; provider: string }): string | null {
+    // Prova match per provider
+    if (account.provider === "binance") return "crypto";
+    if (account.provider === "revolut-x") return "crypto";
+    // Match per nome contiene la platform di un Investment
+    for (const inv of investments) {
+      if (
+        account.name.toLowerCase().includes(inv.platform.toLowerCase()) ||
+        inv.name.toLowerCase().includes(account.name.toLowerCase())
+      ) {
+        return inv.type;
+      }
+    }
+    return null;
+  }
+
+  // Per type=investment "movimenti" = BUY/SELL trades (StockTrade/CryptoTrade
+  // matched per platform tramite la Investment row paired). I Transaction
+  // records sui conti investment sono solo deposit/withdraw verso il broker e
+  // non interessano il count del broker (sono cash flow gestiti altrove).
+  // Per i conti non-investment usiamo il classico count Transaction.
+  function combinedTxCount(account: { id: string; name: string; type: string }): number {
+    if (account.type !== "investment") return txCountByAccount[account.id] ?? 0;
+    const inv = investments.find((i) => i.name === account.name);
+    if (!inv) return 0;
+    const cryptoCount = cryptoTradesByPlatMap.get(inv.platform) ?? 0;
+    const stockCount = stockTradesByPlatMap.get(inv.platform) ?? 0;
+    return cryptoCount + stockCount;
+  }
+
+  // Per i conti investment il link "movimenti →" punta alla pagina di dettaglio
+  // /investimenti/<broker> dove sono visibili i trade. Mapping derivato dalla
+  // Investment row paired (stessa logica usata in /investimenti/page.tsx).
+  function investmentDetailHref(account: { name: string; type: string }): string | null {
+    if (account.type !== "investment") return null;
+    const inv = investments.find((i) => i.name === account.name);
+    if (!inv) return null;
+    if (inv.platform === "Binance" && inv.type === "crypto") return "/investimenti/crypto";
+    if (inv.platform === "Revolut X" && inv.type === "crypto") return "/investimenti/crypto-revolut";
+    if (inv.platform === "Revolut" && inv.type === "stocks") return "/investimenti/stocks";
+    return null;
+  }
+
+  const active = allAccounts
+    .filter((a) => a.active)
+    .map((a) => ({
+      ...a,
+      investmentSubtype:
+        a.type === "investment" ? inferInvestmentSubtype(a) : null,
+      apiActive: apiActiveProviders.has(a.provider),
+    }));
   const closed = allAccounts.filter((a) => !a.active);
 
   const grouped = active.reduce<Record<string, typeof active>>((acc, a) => {
@@ -94,9 +149,12 @@ export default async function ContiPage() {
   const totalsByType = Object.fromEntries(
     Object.entries(grouped).map(([type, accs]) => [type, accs.reduce((s, a) => s + effective(a), 0)]),
   );
-  // grandTotal = liquidità + risparmi + cointestato + contante (NO friendsplit, NO investimenti — vanno separati)
+  // grandTotal escluse friendsplit (separate) e investment (usiamo investTotal
+  // dalla Investment table — single source of truth NW-aligned). Le card
+  // investimento sono visibili ma il loro currentBalance NON entra nel totale
+  // header per evitare double-count con investTotal.
   const grandTotal = active
-    .filter((a) => a.type !== "friendsplit")
+    .filter((a) => a.type !== "friendsplit" && a.type !== "investment")
     .reduce((s, a) => s + effective(a), 0);
   const friendsplitTotal = (grouped.friendsplit ?? []).reduce((s, a) => s + a.displayBalance, 0);
 
@@ -205,10 +263,15 @@ export default async function ContiPage() {
         );
         const sections = [...liquiditySections, ...otherSections];
         return sections.map(([type, accs]) => {
+          // Per "investment" usiamo investTotal (Investment table = single
+          // source of truth NW-aligned) anche se i singoli conti possono
+          // avere currentBalance leggermente disallineati.
           const total =
             type === "liquid"
               ? liquidityTypes.reduce((s, t) => s + (totalsByType[t] ?? 0), 0)
-              : (totalsByType[type] ?? 0);
+              : type === "investment"
+                ? investTotal
+                : (totalsByType[type] ?? 0);
           return (
             <section key={type}>
               <div className="flex items-baseline justify-between mb-3 px-1">
@@ -220,7 +283,11 @@ export default async function ContiPage() {
                 </span>
               </div>
               <SortableAccountsGrid
-                initial={accs.map((a) => ({ ...a, txCount: txCountByAccount[a.id] ?? 0 }))}
+                initial={accs.map((a) => ({
+                  ...a,
+                  txCount: combinedTxCount(a),
+                  tradesHref: investmentDetailHref(a),
+                }))}
                 locked={!freezeState.frozen}
               />
             </section>
@@ -278,37 +345,6 @@ export default async function ContiPage() {
           </div>
         </section>
       )}
-
-      {/* Sezione Investimenti — card aggregata cliccabile che porta al dettaglio */}
-      <section>
-        <div className="flex items-baseline justify-between mb-3 px-1">
-          <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)]">
-            Investimenti
-          </h2>
-          <span className="text-sm tabular-nums text-[var(--fg-muted)]">{formatEUR(investTotal)}</span>
-        </div>
-        <Link
-          href="/investimenti"
-          className="block group relative overflow-hidden rounded-2xl border border-violet-500/30 bg-gradient-to-br from-violet-500/15 via-[var(--surface)] to-indigo-500/15 p-5 transition-transform hover:-translate-y-0.5 hover:border-violet-500/50"
-        >
-          <div className="pointer-events-none absolute -top-12 -right-12 size-48 rounded-full bg-violet-500/15 blur-3xl" />
-          <div className="relative flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0">
-              <div className="size-10 rounded-xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center text-xl shrink-0">
-                <TrendingUp className="size-5 text-violet-400" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm text-[var(--fg-muted)]">Totale Investimenti</div>
-                <div className="text-2xl font-semibold tabular-nums">{formatEUR(investTotal)}</div>
-                <div className="text-[11px] text-[var(--fg-subtle)] mt-0.5">
-                  {investments.length} posizioni · clicca per il dettaglio
-                </div>
-              </div>
-            </div>
-            <ArrowUpRight className="size-5 text-[var(--fg-muted)] group-hover:text-violet-400 transition-colors shrink-0" />
-          </div>
-        </Link>
-      </section>
 
       {closed.length > 0 && (
         <section className="opacity-60">
