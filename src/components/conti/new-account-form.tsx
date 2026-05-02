@@ -68,7 +68,7 @@ export function NewAccountForm() {
           provider,
           currency,
           emoji: emoji.trim() || selected.emoji,
-          ownershipShare: parseFloat(ownership),
+          ownershipShare: type === "joint" ? parseFloat(ownership) : 1,
           currentBalance: parseFloat(balance) || 0,
           ...(type === "investment" ? { assetClass } : {}),
         }),
@@ -235,47 +235,49 @@ export function NewAccountForm() {
           />
         </div>
 
-        <div className="space-y-1.5 sm:col-span-2">
-          <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
-            Quota di proprietà{" "}
-            <span className="text-[var(--fg-subtle)] normal-case tracking-normal">
-              (frazione di tua proprietà; 1 = tutto tuo)
-            </span>
-          </label>
-          <div className="flex flex-wrap gap-2 mb-1">
-            {[
-              { v: "1", label: "100% (tutto tuo)" },
-              { v: "0.5", label: "1/2" },
-              { v: "0.666666666666667", label: "2/3" },
-              { v: "0.333333333333333", label: "1/3" },
-            ].map((p) => {
-              const active = Math.abs(parseFloat(ownership) - parseFloat(p.v)) < 0.01;
-              return (
-                <button
-                  key={p.v}
-                  type="button"
-                  onClick={() => setOwnership(p.v)}
-                  className={`h-7 px-2.5 rounded-md text-xs border transition-colors ${
-                    active
-                      ? "border-violet-500/50 bg-violet-500/10 text-violet-200"
-                      : "border-[var(--border)] bg-[var(--surface-2)]/40 hover:border-[var(--border-strong)]"
-                  }`}
-                >
-                  {p.label}
-                </button>
-              );
-            })}
+        {type === "joint" && (
+          <div className="space-y-1.5 sm:col-span-2">
+            <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
+              Quota di proprietà{" "}
+              <span className="text-[var(--fg-subtle)] normal-case tracking-normal">
+                (frazione di tua proprietà; 1 = tutto tuo)
+              </span>
+            </label>
+            <div className="flex flex-wrap gap-2 mb-1">
+              {[
+                { v: "1", label: "100% (tutto tuo)" },
+                { v: "0.5", label: "1/2" },
+                { v: "0.666666666666667", label: "2/3" },
+                { v: "0.333333333333333", label: "1/3" },
+              ].map((p) => {
+                const active = Math.abs(parseFloat(ownership) - parseFloat(p.v)) < 0.01;
+                return (
+                  <button
+                    key={p.v}
+                    type="button"
+                    onClick={() => setOwnership(p.v)}
+                    className={`h-7 px-2.5 rounded-md text-xs border transition-colors ${
+                      active
+                        ? "border-violet-500/50 bg-violet-500/10 text-violet-200"
+                        : "border-[var(--border)] bg-[var(--surface-2)]/40 hover:border-[var(--border-strong)]"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
+            </div>
+            <input
+              type="number"
+              step="any"
+              min="0"
+              max="1"
+              value={ownership}
+              onChange={(e) => setOwnership(e.target.value)}
+              className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm tabular-nums focus:outline-none focus:border-violet-500/50"
+            />
           </div>
-          <input
-            type="number"
-            step="any"
-            min="0"
-            max="1"
-            value={ownership}
-            onChange={(e) => setOwnership(e.target.value)}
-            className="w-full h-9 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm tabular-nums focus:outline-none focus:border-violet-500/50"
-          />
-        </div>
+        )}
       </div>
 
       {error && (
