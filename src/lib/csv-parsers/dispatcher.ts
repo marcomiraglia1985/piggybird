@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 import { parseRevolutCSV, isRevolut } from "./revolut";
+import { parseRevolutSavings, isRevolutSavings } from "./revolut-savings";
 import { parseFineco, isFineco } from "./fineco";
 import { parseBNP, isBNP } from "./bnp";
 import { parseN26, isN26 } from "./n26";
@@ -45,6 +46,11 @@ export function parseAny(content: string): ParserResult {
 
   if (isRevolut(headers)) {
     return parseRevolutCSV(content);
+  }
+
+  // Revolut Savings: header univoco "Tasso di interesse lordo guadagnato"
+  if (isRevolutSavings(headers)) {
+    return parseRevolutSavings(content);
   }
 
   // N26: header sulla prima riga, formato CSV standard quotato

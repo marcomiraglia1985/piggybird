@@ -184,7 +184,7 @@ export function TransactionsTable({
     }
   }
 
-  async function confirmEntrata(t: Tx) {
+  async function confirmMovimento(t: Tx) {
     setConfirmingSaving(true);
     try {
       const today = new Date();
@@ -499,7 +499,7 @@ export function TransactionsTable({
                         const isTransfer = !!t.transferGroupId;
                         const isOverdue =
                           !t.confirmed && new Date(t.date).getTime() <= Date.now();
-                        const canConfirm = !t.confirmed && t.amount > 0 && !isTransfer;
+                        const canConfirm = !t.confirmed && !isTransfer;
                         return (
                           <tr
                             key={t.id}
@@ -567,7 +567,7 @@ export function TransactionsTable({
                                   {t.amount > 0 ? "+" : ""}
                                   {formatEUR(t.amount)}
                                 </span>
-                                {t.amount > 0 && !isTransfer && (
+                                {!isTransfer && (
                                   <button
                                     type="button"
                                     onClick={() => setEditingTx(t)}
@@ -582,7 +582,7 @@ export function TransactionsTable({
                                     type="button"
                                     onClick={() => setConfirmingTx(t)}
                                     className="size-6 inline-flex items-center justify-center rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/20"
-                                    title="Conferma incasso (sposta a oggi)"
+                                    title="Conferma movimento (sposta a oggi)"
                                   >
                                     <Check className="size-3" />
                                   </button>
@@ -1027,7 +1027,7 @@ export function TransactionsTable({
               onClick={(e) => e.stopPropagation()}
               className="w-full max-w-md surface p-6 space-y-4"
             >
-              <h2 className="text-lg font-semibold">Confermi l'incasso?</h2>
+              <h2 className="text-lg font-semibold">Confermi il movimento?</h2>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--fg-muted)]">Beneficiario</span>
@@ -1035,8 +1035,14 @@ export function TransactionsTable({
                 </div>
                 <div className="flex justify-between gap-4">
                   <span className="text-[var(--fg-muted)]">Importo</span>
-                  <span className="font-medium tabular-nums text-emerald-400">
-                    +{formatEUR(confirmingTx.amount)}
+                  <span
+                    className={cn(
+                      "font-medium tabular-nums",
+                      confirmingTx.amount > 0 ? "text-emerald-400" : "text-[var(--fg)]",
+                    )}
+                  >
+                    {confirmingTx.amount > 0 ? "+" : ""}
+                    {formatEUR(confirmingTx.amount)}
                   </span>
                 </div>
                 <div className="flex justify-between gap-4">
@@ -1072,12 +1078,12 @@ export function TransactionsTable({
               </p>
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => confirmEntrata(confirmingTx)}
+                  onClick={() => confirmMovimento(confirmingTx)}
                   disabled={confirmingSaving}
                   className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-emerald-500 text-white text-sm font-medium disabled:opacity-50"
                 >
                   <Check className="size-4" />
-                  {confirmingSaving ? "Confermo…" : "Sì, conferma incasso"}
+                  {confirmingSaving ? "Confermo…" : "Sì, conferma"}
                 </button>
                 <button
                   onClick={() => setConfirmingTx(null)}

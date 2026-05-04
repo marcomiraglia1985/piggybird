@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { callClaude } from "@/lib/claude-api";
 import { getUserProfile } from "@/lib/user-profile";
+import { stripJsonFence } from "@/lib/ai/json-utils";
 
 export const runtime = "nodejs";
 
@@ -84,16 +85,8 @@ function isGenericBeneficiary(norm: string): boolean {
   return norm.length < 3 || GENERIC_BENEFICIARIES.has(norm);
 }
 
-function stripJsonFence(raw: string): string {
-  let s = raw.trim();
-  if (s.startsWith("```")) {
-    s = s
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-  }
-  return s;
-}
+// stripJsonFence ora vive in `lib/ai/json-utils.ts` ed è condiviso con
+// import-review e i universal-parser fallback.
 
 type ParsedAIGroupSugg = {
   groupId: string;

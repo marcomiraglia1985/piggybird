@@ -15,8 +15,21 @@ import {
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
 import { formatEUR, formatDate, cn } from "@/lib/utils";
+import { formatCostEur } from "@/lib/ai-pricing";
 import { SUPPORTED_BANKS } from "@/lib/csv-parsers/banks";
 import { CategoryPicker } from "@/components/movimenti/category-picker";
+import { AIButton } from "@/components/ui/ai-button";
+import { ConfigureAiCta } from "@/components/ai/configure-ai-cta";
+import { useAiConfigured } from "@/hooks/use-ai-configured";
+
+type AiAnnotation = {
+  idx: string;
+  cleanedBeneficiary: string | null;
+  suggestedCategoryId: string | null;
+  confidence: number;
+  transferPairIdx: string | null;
+  reasoning: string;
+};
 
 type SoftDupInfo = {
   id: string;
@@ -42,6 +55,9 @@ type ParsedRow = {
   transferGroupId?: string | null;
   isTransfer?: boolean;
   confirmsRecurrence?: { txId: string; newDate: string; newAmount: number } | null;
+  /** Override server-side dell'account scelto nel pair stage (per quirk
+   *  Revolut Current → Savings sugli interessi passthrough, ecc.) */
+  forceAccountId?: string | null;
 };
 
 type Account = { id: string; name: string; emoji: string | null };
@@ -60,6 +76,20 @@ type ParseResponse = {
   format: string;
   rows: ParsedRow[];
   warnings: string[];
+  accounts: Account[];
+  categories: Category[];
+  estates?: Estate[];
+};
+
+type FileResult = {
+  fileName: string;
+  format: string;
+  rows: ParsedRow[];
+  warnings: string[];
+};
+
+type AggregatedData = {
+  files: FileResult[];
   accounts: Account[];
   categories: Category[];
   estates?: Estate[];
@@ -90,6 +120,8 @@ type Editable = {
   softDuplicate?: SoftDupInfo | null;
   /** Action per il commit. Default per soft-dup = "merge", altrimenti "create". */
   action: "create" | "merge" | "replace";
+  /** File CSV di provenienza — utile quando si caricano più CSV in batch. */
+  sourceFileName?: string;
 };
 
 export function ImportClient() {
@@ -100,13 +132,26 @@ export function ImportClient() {
   const [stage, setStage] = useState<
     "idle" | "parsing" | "pair" | "no-accounts" | "review" | "committing" | "done"
   >("idle");
-  const [data, setData] = useState<ParseResponse | null>(null);
+  const [data, setData] = useState<AggregatedData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Editable[]>([]);
-  const [targetAccountId, setTargetAccountId] = useState<string>("");
+  /** Mappa fileName → accountId scelto nello step pair (uno per file). */
+  const [fileAccounts, setFileAccounts] = useState<Map<string, string>>(new Map());
   const [committed, setCommitted] = useState(0);
   const [dragOver, setDragOver] = useState(false);
   const [hideDuplicates, setHideDuplicates] = useState(false);
+  /** Progress durante il parse di N file: indice corrente + nome file. */
+  const [parseProgress, setParseProgress] = useState<{
+    current: number;
+    total: number;
+    currentFile: string;
+  } | null>(null);
+  const aiConfigured = useAiConfigured();
+  /** Annotazioni AI per externalId — popolato dopo il click su Revisione AI. */
+  const [aiAnnotations, setAiAnnotations] = useState<Map<string, AiAnnotation>>(new Map());
+  const [aiLoading, setAiLoading] = useState(false);
+  /** Costo cumulativo dell'ultima review AI, mostrato nella UI dopo l'apply. */
+  const [aiCost, setAiCost] = useState<number | null>(null);
   // Banche aggiunte dinamicamente via universal AI fallback (es. N26).
   // Mostrate accanto a SUPPORTED_BANKS hardcoded col badge ✨.
   const [aiBanks, setAiBanks] = useState<{ name: string; usageCount: number }[]>([]);
@@ -119,10 +164,14 @@ export function ImportClient() {
       setParsingElapsedMs(0);
       return;
     }
+    // Reset elapsed quando cambia il file corrente in batch — così la
+    // soglia "Apprendimento AI…" misura il tempo per il file specifico,
+    // non l'intero batch.
     const start = Date.now();
+    setParsingElapsedMs(0);
     const id = setInterval(() => setParsingElapsedMs(Date.now() - start), 250);
     return () => clearInterval(id);
-  }, [stage]);
+  }, [stage, parseProgress?.current]);
 
   useEffect(() => {
     fetch("/api/parser-templates")
@@ -131,52 +180,141 @@ export function ImportClient() {
       .catch(() => {});
   }, []);
 
-  const onFile = useCallback(async (file: File) => {
-    setStage("parsing");
-    setError(null);
-    const fd = new FormData();
-    fd.append("file", file);
-    try {
-      const res = await fetch("/api/import/parse", { method: "POST", body: fd });
-      if (!res.ok) {
-        const err = await res.json().catch(() => null);
-        throw new Error(err?.error ?? "Errore parsing");
+  const onFiles = useCallback(
+    async (files: File[]) => {
+      if (files.length === 0) return;
+      setStage("parsing");
+      setError(null);
+      setParseProgress({ current: 0, total: files.length, currentFile: files[0].name });
+      const results: FileResult[] = [];
+      let lastResponse: ParseResponse | null = null;
+      const failed: { fileName: string; error: string }[] = [];
+      // Sequenziale per non scatenare race condition sull'AI fallback delle
+      // banche nuove (se due file della stessa banca sconosciuta arrivano in
+      // parallelo, finirebbero a chiamare Claude due volte).
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setParseProgress({ current: i, total: files.length, currentFile: file.name });
+        const fd = new FormData();
+        fd.append("file", file);
+        try {
+          const res = await fetch("/api/import/parse", { method: "POST", body: fd });
+          if (!res.ok) {
+            const err = await res.json().catch(() => null);
+            throw new Error(err?.error ?? "errore parsing");
+          }
+          const json = (await res.json()) as ParseResponse;
+          lastResponse = json;
+          results.push({
+            fileName: file.name,
+            format: json.format,
+            rows: json.rows,
+            warnings: json.warnings,
+          });
+        } catch (e) {
+          // Il file fallito viene saltato — gli altri proseguono.
+          // Cumuliamo gli errori e li mostriamo come warning a fine batch
+          // (review stage), invece di scartare il lavoro buono.
+          failed.push({
+            fileName: file.name,
+            error: e instanceof Error ? e.message : "errore sconosciuto",
+          });
+        }
       }
-      const json = (await res.json()) as ParseResponse;
-      setData(json);
+      setParseProgress(null);
+      if (results.length === 0) {
+        // Tutti i file falliti: mostriamo il dettaglio del primo + count.
+        const first = failed[0];
+        const more = failed.length > 1 ? ` (e altri ${failed.length - 1})` : "";
+        setError(`${first?.fileName}: ${first?.error}${more}`);
+        setStage("idle");
+        return;
+      }
+      if (failed.length > 0) {
+        // Almeno un file OK + qualcuno fallito: prosegui ma surface i fail
+        // come warning persistente.
+        const summary = failed.map((f) => `${f.fileName}: ${f.error}`).join(" · ");
+        setError(`${failed.length} file ignorati — ${summary}`);
+      }
+      if (!lastResponse) return;
       // 0 conti? Empty state che chiede di crearne uno prima di importare.
-      if (json.accounts.length === 0) {
+      if (lastResponse.accounts.length === 0) {
+        setData({
+          files: results,
+          accounts: lastResponse.accounts,
+          categories: lastResponse.categories,
+          estates: lastResponse.estates,
+        });
         setStage("no-accounts");
         return;
       }
-      // Default targetAccountId: 1) ?account= in URL  2) primo conto.
-      const initialTarget =
-        preselectedAccountId &&
-        json.accounts.some((a) => a.id === preselectedAccountId)
-          ? preselectedAccountId
-          : json.accounts[0].id;
-      setTargetAccountId(initialTarget);
-      setStage("pair");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore sconosciuto");
-      setStage("idle");
-    }
-  }, [preselectedAccountId]);
+      // Default per ogni file: priorità
+      //   1. ?account= in URL se valido
+      //   2. `suggestedAccount` maggioritario tra le righe (parser sa quale
+      //      conto questo file rappresenta — es. Revolut Savings, Revolut Trading)
+      //   3. primo conto disponibile (fallback)
+      const accountsByName = new Map(
+        lastResponse.accounts.map((a) => [a.name, a.id]),
+      );
+      const m = new Map<string, string>();
+      for (const r of results) {
+        // Vote tra le suggestedAccount delle righe del file
+        const voteByName = new Map<string, number>();
+        for (const row of r.rows) {
+          const name = row.suggestedAccount;
+          if (!name) continue;
+          voteByName.set(name, (voteByName.get(name) ?? 0) + 1);
+        }
+        let majorityName: string | null = null;
+        let majorityCount = 0;
+        for (const [name, count] of voteByName) {
+          if (count > majorityCount) {
+            majorityCount = count;
+            majorityName = name;
+          }
+        }
+        const suggestedId =
+          majorityName != null ? accountsByName.get(majorityName) ?? null : null;
 
-  // Quando l'utente conferma il conto target, costruisce gli edits con quel
-  // conto come accountId per tutte le righe (override del suggestedAccount).
+        const fileInitial =
+          preselectedAccountId &&
+          lastResponse.accounts.some((a) => a.id === preselectedAccountId)
+            ? preselectedAccountId
+            : suggestedId ?? lastResponse.accounts[0].id;
+        m.set(r.fileName, fileInitial);
+      }
+      setFileAccounts(m);
+      setData({
+        files: results,
+        accounts: lastResponse.accounts,
+        categories: lastResponse.categories,
+        estates: lastResponse.estates,
+      });
+      setStage("pair");
+    },
+    [preselectedAccountId],
+  );
+
+  // Quando l'utente conferma i conti per ogni file, costruisce gli edits
+  // unendo le righe di tutti i file con l'accountId scelto per ciascuno.
   function confirmPairing() {
-    if (!data || !targetAccountId) return;
+    if (!data) return;
     const catByEmoji = new Map(data.categories.map((c) => [c.emoji, c]));
-    setEdits(
-      data.rows.map((r) => {
+    const allEdits: Editable[] = [];
+    for (const file of data.files) {
+      const fileAccountId = fileAccounts.get(file.fileName);
+      if (!fileAccountId) return; // un file senza conto: blocca
+      for (const r of file.rows) {
         const cat = r.suggestedCategoryEmoji ? catByEmoji.get(r.suggestedCategoryEmoji) : null;
-        return {
+        // forceAccountId vince sul pair stage: usato dai quirk parser-level
+        // (es. Revolut Current CSV reindirizza interessi savings al conto deposito).
+        const accountId = r.forceAccountId ?? fileAccountId;
+        allEdits.push({
           externalId: r.externalId,
           date: r.date,
           amount: r.amount,
           description: r.description,
-          accountId: targetAccountId,
+          accountId,
           categoryId: cat?.id ?? null,
           suggestedCategoryEmoji: r.suggestedCategoryEmoji ?? null,
           suggestedAccountName: r.suggestedAccount ?? null,
@@ -194,9 +332,11 @@ export function ImportClient() {
           confirmsRecurrence: r.confirmsRecurrence ?? null,
           softDuplicate: r.softDuplicateOf ?? null,
           action: r.softDuplicateOf ? "merge" : "create",
-        };
-      }),
-    );
+          sourceFileName: file.fileName,
+        });
+      }
+    }
+    setEdits(allEdits);
     setStage("review");
   }
 
@@ -204,10 +344,10 @@ export function ImportClient() {
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDragOver(false);
-      const file = e.dataTransfer.files[0];
-      if (file) onFile(file);
+      const files = Array.from(e.dataTransfer.files);
+      if (files.length > 0) onFiles(files);
     },
-    [onFile],
+    [onFiles],
   );
 
   const onCommit = useCallback(async () => {
@@ -216,10 +356,17 @@ export function ImportClient() {
     const selected = edits.filter((e) => e.selected);
     // Le righe che confermano una ricorrenza non vengono inserite — il commit
     // aggiorna la tx programmata esistente. Le altre creano una nuova tx.
+    // Forwardiamo anche i cleanup AI Review (description→beneficiary,
+    // categoryId, notes) così non vengono persi sulla pending tx.
     const toInsert = selected.filter((e) => !e.confirmsRecurrence);
     const confirmRecurrences = selected
       .filter((e) => e.confirmsRecurrence)
-      .map((e) => e.confirmsRecurrence!);
+      .map((e) => ({
+        ...e.confirmsRecurrence!,
+        beneficiary: e.description || null,
+        notes: e.notes,
+        categoryId: e.categoryId,
+      }));
     const rows = toInsert.map((e) => ({
       date: e.date,
       amount: e.amount,
@@ -255,7 +402,7 @@ export function ImportClient() {
       if (inserted > 0) parts.push(`${inserted} nuovi`);
       if (merged > 0) parts.push(`${merged} arricchiti (merge)`);
       if (replaced > 0) parts.push(`${replaced} sostituiti`);
-      if (confirmed > 0) parts.push(`${confirmed} ricorrenze confermate`);
+      if (confirmed > 0) parts.push(`${confirmed} programmati confermati`);
       toast({
         title: `Import completato`,
         description: parts.join(" · ") || "0 movimenti",
@@ -275,7 +422,138 @@ export function ImportClient() {
     setEdits([]);
     setError(null);
     setCommitted(0);
+    setFileAccounts(new Map());
+    setParseProgress(null);
+    setAiAnnotations(new Map());
+    setAiCost(null);
   };
+
+  const runAiReview = useCallback(async () => {
+    if (!aiConfigured) {
+      toast({
+        title: "AI non configurata",
+        description:
+          "Vai in Impostazioni → Funzioni AI per inserire la tua API key Anthropic.",
+        variant: "info",
+      });
+      return;
+    }
+    if (!data || edits.length === 0) return;
+    setAiLoading(true);
+    try {
+      const accountById = new Map(data.accounts.map((a) => [a.id, a]));
+      const rows = edits
+        .filter((e) => e.selected)
+        .map((e) => ({
+          idx: e.externalId,
+          date: e.date,
+          amount: e.amount,
+          description: e.description,
+          notes: e.notes,
+          accountName: accountById.get(e.accountId)?.name ?? "?",
+          currentCategoryEmoji: e.suggestedCategoryEmoji ?? null,
+        }));
+      const categories = data.categories.map((c) => ({
+        id: c.id,
+        emoji: c.emoji,
+        name: c.name,
+        type: c.type,
+      }));
+      const res = await fetch("/api/import/ai-review", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rows, categories }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        throw new Error(err?.error ?? "Errore AI review");
+      }
+      const json = await res.json();
+      const annotations: AiAnnotation[] = json.annotations ?? [];
+      const annMap = new Map<string, AiAnnotation>();
+      for (const a of annotations) annMap.set(a.idx, a);
+      setAiAnnotations(annMap);
+      setAiCost(json.costEur ?? 0);
+
+      // Applica i suggerimenti preservando l'identità delle righe non
+      // annotate (evita full re-render): clona solo le righe toccate.
+      // categoria solo se vuota (rispetta override utente), beneficiary
+      // cleaned se diverso, transfer pair → transferGroupId condiviso
+      // (rimappato server-side nel commit).
+      setEdits((prev) => {
+        // First pass: applica annotazioni per-riga non transfer.
+        const afterRowAnn = prev.map((e) => {
+          const a = annMap.get(e.externalId);
+          if (!a) return e;
+          const newCategoryId = !e.categoryId && a.suggestedCategoryId
+            ? a.suggestedCategoryId
+            : e.categoryId;
+          const newDescription =
+            a.cleanedBeneficiary && a.cleanedBeneficiary !== e.description
+              ? a.cleanedBeneficiary
+              : e.description;
+          if (newCategoryId === e.categoryId && newDescription === e.description) {
+            return e;
+          }
+          return { ...e, categoryId: newCategoryId, description: newDescription };
+        });
+        // Second pass: transfer pair. Mutiamo gli indici noti per evitare un
+        // ulteriore mapping di tutto l'array.
+        const transferUpdates = new Map<string, { isTransfer: boolean; transferGroupId: string }>();
+        const byIdx = new Map(afterRowAnn.map((e) => [e.externalId, e]));
+        const handled = new Set<string>();
+        for (const e of afterRowAnn) {
+          if (handled.has(e.externalId)) continue;
+          const a = annMap.get(e.externalId);
+          if (!a?.transferPairIdx) continue;
+          const pair = byIdx.get(a.transferPairIdx);
+          if (!pair || handled.has(pair.externalId)) continue;
+          const aPair = annMap.get(pair.externalId);
+          if (aPair?.transferPairIdx !== e.externalId) continue;
+          if (e.transferGroupId || pair.transferGroupId) continue;
+          const tgid = `ai-${crypto.randomUUID()}`;
+          transferUpdates.set(e.externalId, { isTransfer: true, transferGroupId: tgid });
+          transferUpdates.set(pair.externalId, { isTransfer: true, transferGroupId: tgid });
+          handled.add(e.externalId);
+          handled.add(pair.externalId);
+        }
+        if (transferUpdates.size === 0) return afterRowAnn;
+        return afterRowAnn.map((e) => {
+          const upd = transferUpdates.get(e.externalId);
+          return upd ? { ...e, ...upd } : e;
+        });
+      });
+
+      // Conta solo le annotazioni utili — quelle con almeno un suggerimento
+      // applicabile. Se 0, mostriamo un messaggio chiaro invece del generico
+      // "X righe analizzate" (che dà l'impressione che l'AI non abbia girato).
+      const usefulCount = annotations.filter(
+        (a) =>
+          a.cleanedBeneficiary != null ||
+          a.suggestedCategoryId != null ||
+          a.transferPairIdx != null,
+      ).length;
+      toast({
+        title:
+          usefulCount > 0
+            ? "Revisione AI completata"
+            : "Niente da migliorare",
+        description:
+          usefulCount > 0
+            ? `${usefulCount} suggerimenti su ${annotations.length} righe · ${formatCostEur(json.costEur ?? 0)}`
+            : `${annotations.length} righe analizzate, nessun suggerimento utile (descrizioni già pulite, categorie già impostate, nessun transfer rilevato) · ${formatCostEur(json.costEur ?? 0)}`,
+        variant: "success",
+      });
+    } catch (e) {
+      toast({
+        title: "Errore Revisione AI",
+        description: e instanceof Error ? e.message : "Sconosciuto",
+        variant: "error",
+      });
+    } finally {
+      setAiLoading(false);
+    }
+  }, [aiConfigured, data, edits, toast]);
 
   if (stage === "no-accounts") {
     return (
@@ -309,37 +587,61 @@ export function ImportClient() {
   }
 
   if (stage === "pair" && data) {
-    const matched = SUPPORTED_BANKS.find((b) => b.format === data.format);
-    const fmt = matched ? matched.name : data.format;
+    const allPicked = data.files.every((f) => fileAccounts.get(f.fileName));
+    const totalRows = data.files.reduce((s, f) => s + f.rows.length, 0);
+    const isSingle = data.files.length === 1;
     return (
-      <div className="max-w-xl mx-auto py-12 space-y-6">
+      <div className="max-w-2xl mx-auto py-12 space-y-6">
         <div className="text-center space-y-2">
           <div className="size-14 mx-auto rounded-2xl bg-[var(--surface-2)] border border-[var(--border)] flex items-center justify-center">
             <FileText className="size-6 text-[var(--fg-muted)]" />
           </div>
-          <h2 className="text-xl font-semibold tracking-tight">CSV riconosciuto: {fmt}</h2>
+          <h2 className="text-xl font-semibold tracking-tight">
+            {isSingle
+              ? `CSV riconosciuto: ${formatLabel(data.files[0].format)}`
+              : `${data.files.length} file riconosciuti`}
+          </h2>
           <p className="text-sm text-[var(--fg-muted)]">
-            {data.rows.length} righe trovate. In quale dei tuoi conti vanno questi movimenti?
+            {totalRows} righe trovate. {isSingle ? "In quale dei tuoi conti vanno questi movimenti?" : "Scegli il conto per ogni file."}
           </p>
         </div>
         <div className="surface p-4 space-y-3">
-          <label className="text-xs uppercase tracking-widest text-[var(--fg-muted)]">
-            Conto di destinazione
-          </label>
-          <select
-            value={targetAccountId}
-            onChange={(e) => setTargetAccountId(e.target.value)}
-            className="w-full h-10 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 text-sm focus:outline-none focus:border-violet-500/50"
-          >
-            {data.accounts.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.emoji ?? "💳"} {a.name}
-              </option>
+          <div className="space-y-2 max-h-[60vh] overflow-y-auto pr-1">
+            {data.files.map((f) => (
+              <div
+                key={f.fileName}
+                className="flex items-center gap-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 py-2.5"
+              >
+                <FileText className="size-4 text-[var(--fg-muted)] shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{f.fileName}</div>
+                  <div className="text-[11px] text-[var(--fg-subtle)]">
+                    {formatLabel(f.format)} · {f.rows.length} righe
+                  </div>
+                </div>
+                <select
+                  value={fileAccounts.get(f.fileName) ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setFileAccounts((prev) => {
+                      const next = new Map(prev);
+                      next.set(f.fileName, v);
+                      return next;
+                    });
+                  }}
+                  className="h-9 rounded-lg bg-[var(--surface)] border border-[var(--border)] px-2 text-sm focus:outline-none focus:border-violet-500/50 max-w-[200px]"
+                >
+                  {data.accounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.emoji ?? "💳"} {a.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
             ))}
-          </select>
+          </div>
           <p className="text-[11px] text-[var(--fg-subtle)]">
-            Tutte le righe dell&apos;import useranno questo conto. Potrai cambiarlo per singola
-            riga nello step successivo.
+            Potrai cambiare il conto per singola riga nello step successivo.
           </p>
         </div>
         <div className="flex items-center justify-end gap-2">
@@ -351,7 +653,7 @@ export function ImportClient() {
           </button>
           <button
             onClick={confirmPairing}
-            disabled={!targetAccountId}
+            disabled={!allPicked}
             className="h-9 px-4 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-sm font-medium disabled:opacity-50 inline-flex items-center gap-2"
           >
             Avanti
@@ -394,19 +696,23 @@ export function ImportClient() {
             <div>
               <p className="text-base font-medium">
                 {stage === "parsing"
-                  ? parsingElapsedMs < 2500
-                    ? "Analisi del file…"
-                    : parsingElapsedMs < 7000
-                      ? "Riconoscimento del formato…"
-                      : "Apprendimento di una nuova banca via AI…"
-                  : "Trascina qui il file (CSV o XLSX)"}
+                  ? parseProgress && parseProgress.total > 1
+                    ? `File ${parseProgress.current + 1} di ${parseProgress.total}: ${parseProgress.currentFile}`
+                    : parsingElapsedMs < 2500
+                      ? "Analisi del file…"
+                      : parsingElapsedMs < 7000
+                        ? "Riconoscimento del formato…"
+                        : "Apprendimento di una nuova banca via AI…"
+                  : "Trascina qui i file (CSV o XLSX)"}
               </p>
               <p className="text-sm text-[var(--fg-muted)] mt-1">
                 {stage === "parsing"
-                  ? parsingElapsedMs < 7000
-                    ? "Il formato viene riconosciuto automaticamente."
-                    : "Sta succedendo solo questa volta — la prossima volta sarà istantaneo per questa banca."
-                  : "Il formato viene riconosciuto automaticamente. Banche supportate qui sotto."}
+                  ? parsingElapsedMs >= 7000
+                    ? "Apprendimento via AI in corso — prossima volta sarà istantaneo per questa banca."
+                    : parseProgress && parseProgress.total > 1
+                      ? `${parseProgress.total - parseProgress.current - 1} file ancora da processare.`
+                      : "Il formato viene riconosciuto automaticamente."
+                  : "Trascina più file insieme per importarli in un unico passaggio. Banche supportate qui sotto."}
               </p>
             </div>
             <label className="cursor-pointer inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm hover:border-[var(--border-strong)]">
@@ -414,11 +720,12 @@ export function ImportClient() {
               Sfoglia…
               <input
                 type="file"
+                multiple
                 accept=".csv,text/csv,.xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="hidden"
                 onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) onFile(f);
+                  const list = e.target.files;
+                  if (list && list.length > 0) onFiles(Array.from(list));
                 }}
               />
             </label>
@@ -477,10 +784,14 @@ export function ImportClient() {
     const totalOut = edits.filter((e) => e.selected && e.amount < 0).reduce((s, e) => s + e.amount, 0);
     const visibleEdits = hideDuplicates ? edits.filter((e) => !e.isDuplicate) : edits;
 
+    const aiAnnotatedCount = aiAnnotations.size;
     return (
       <div className="space-y-4">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Stat label="Totali nel CSV" value={data.rows.length.toString()} />
+          <Stat
+            label={data.files.length > 1 ? `Totali (${data.files.length} file)` : "Totali nel CSV"}
+            value={data.files.reduce((s, f) => s + f.rows.length, 0).toString()}
+          />
           <Stat label="Nuovi" value={newCount.toString()} variant="emerald" />
           <Stat
             label={softDupCount > 0 ? "Da decidere (soft-dup)" : "Già presenti"}
@@ -494,6 +805,15 @@ export function ImportClient() {
             icon="sparkle"
           />
         </div>
+
+        <AiReviewBanner
+          aiConfigured={aiConfigured}
+          aiLoading={aiLoading}
+          annotatedCount={aiAnnotatedCount}
+          aiCost={aiCost}
+          onRun={runAiReview}
+          rowCount={selectedCount}
+        />
 
         <div className="surface p-4 space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -577,14 +897,19 @@ export function ImportClient() {
           </div>
         )}
 
-        {data.warnings.length > 0 && (
+        {data.files.some((f) => f.warnings.length > 0) && (
           <div className="surface border-amber-500/30 bg-amber-500/5 p-3 text-xs space-y-1">
-            {data.warnings.slice(0, 5).map((w, i) => (
-              <div key={i} className="flex gap-2">
-                <AlertTriangle className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
-                {w}
-              </div>
-            ))}
+            {data.files
+              .flatMap((f) =>
+                f.warnings.map((w) => (data.files.length > 1 ? `${f.fileName}: ${w}` : w)),
+              )
+              .slice(0, 5)
+              .map((w, i) => (
+                <div key={i} className="flex gap-2">
+                  <AlertTriangle className="size-3.5 text-amber-400 shrink-0 mt-0.5" />
+                  {w}
+                </div>
+              ))}
           </div>
         )}
 
@@ -619,6 +944,9 @@ export function ImportClient() {
                     />
                   </th>
                   <th className="px-3 py-3 font-medium">Data</th>
+                  {data.files.length > 1 && (
+                    <th className="px-3 py-3 font-medium">Origine</th>
+                  )}
                   <th className="px-3 py-3 font-medium">Descrizione</th>
                   <th className="px-3 py-3 font-medium">Conto</th>
                   <th className="px-3 py-3 font-medium">Categoria</th>
@@ -652,6 +980,13 @@ export function ImportClient() {
                       <td className="px-3 py-2 whitespace-nowrap text-[var(--fg-muted)] text-xs">
                         {formatDate(e.date, { day: "2-digit", month: "short", year: "2-digit" })}
                       </td>
+                      {data.files.length > 1 && (
+                        <td className="px-3 py-2 text-[10px] text-[var(--fg-subtle)] max-w-[140px]">
+                          <span title={e.sourceFileName} className="truncate inline-block max-w-full">
+                            {e.sourceFileName}
+                          </span>
+                        </td>
+                      )}
                       <td className="px-3 py-2 max-w-[280px]">
                         <div className="flex items-center gap-1.5 min-w-0">
                           {e.isTransfer && (
@@ -660,6 +995,14 @@ export function ImportClient() {
                               className="text-[10px] px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 border border-violet-500/20 shrink-0"
                             >
                               ↔ Transfer
+                            </span>
+                          )}
+                          {aiAnnotations.has(e.externalId) && (
+                            <span
+                              title={`✨ ${aiAnnotations.get(e.externalId)?.reasoning ?? "Suggerimento AI"}`}
+                              className="shrink-0 text-orange-300"
+                            >
+                              <Sparkles className="size-3" />
                             </span>
                           )}
                           <div className="truncate">{e.description || "—"}</div>
@@ -921,6 +1264,100 @@ function SoftDupReviewSection({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function formatLabel(format: string): string {
+  const matched = SUPPORTED_BANKS.find((b) => b.format === format);
+  if (matched) return matched.name;
+  // Format generato dal universal-parser AI fallback: "ai:nomebanca" o "ai:unknown".
+  if (format === "ai:unknown") return "✨ Riconosciuto via Piggybird AI";
+  if (format.startsWith("ai:")) {
+    const name = format.slice(3);
+    const titled = name.charAt(0).toUpperCase() + name.slice(1);
+    return `✨ ${titled} (via Piggybird AI)`;
+  }
+  return format;
+}
+
+/**
+ * Banner "✨ Revisione AI" mostrato sopra la tabella di review.
+ * Tre stati visivi:
+ *   1. Idle  → bottone abilitato, prompt all'utente
+ *   2. Disabled → AI non configurata, link a Impostazioni
+ *   3. Done  → mostra summary + costo dell'ultima call
+ */
+function AiReviewBanner({
+  aiConfigured,
+  aiLoading,
+  annotatedCount,
+  aiCost,
+  onRun,
+  rowCount,
+}: {
+  aiConfigured: boolean | null;
+  aiLoading: boolean;
+  annotatedCount: number;
+  aiCost: number | null;
+  onRun: () => void;
+  rowCount: number;
+}) {
+  const disabled = !aiConfigured || aiLoading || rowCount === 0;
+  const tooltip =
+    aiConfigured === false
+      ? "Configura la tua Claude API key in Impostazioni → Funzioni AI"
+      : aiConfigured === null
+        ? "Verifica configurazione AI…"
+        : rowCount === 0
+          ? "Seleziona almeno una riga"
+          : undefined;
+
+  return (
+    <div className="rounded-xl border border-orange-500/30 bg-gradient-to-br from-amber-500/[0.04] via-orange-500/[0.06] to-rose-500/[0.04] p-3 flex items-center gap-3 flex-wrap">
+      <div className="flex-1 min-w-[200px]">
+        <div className="text-sm font-medium text-orange-200 flex items-center gap-1.5">
+          <Sparkles className="size-3.5" />
+          Revisione AI
+          {annotatedCount > 0 && aiCost != null && (
+            <span className="ml-2 text-[11px] text-[var(--fg-muted)] font-normal">
+              · {annotatedCount} righe analizzate · {formatCostEur(aiCost)}
+            </span>
+          )}
+        </div>
+        <p className="text-[11px] text-[var(--fg-muted)] mt-0.5">
+          {aiConfigured === false
+            ? "Aggiungi la tua API key Anthropic per attivare: pulisce i merchant, suggerisce categorie sui movimenti nuovi, riconosce transfer cross-CSV."
+            : annotatedCount > 0
+              ? "Le righe annotate sono marcate con ✨ — passa il mouse sopra per vedere il ragionamento. Puoi sempre cambiare manualmente."
+              : "Pulisce i merchant, suggerisce categorie sui movimenti nuovi, riconosce transfer cross-CSV."}
+        </p>
+        {aiConfigured === true && rowCount > 0 && (
+          <p className="text-[10px] text-[var(--fg-subtle)] mt-1 leading-relaxed">
+            Privacy: descrizione, note, importo e nome conto vengono inviati al
+            tuo account Anthropic per l'analisi. Beneficiari, IBAN, dettagli
+            persona NON vengono mai esfiltrati a terze parti.
+          </p>
+        )}
+      </div>
+      {aiConfigured === false ? (
+        <ConfigureAiCta />
+      ) : (
+        <AIButton
+          variant="subtle"
+          size="sm"
+          onClick={onRun}
+          disabled={disabled}
+          loading={aiLoading}
+          title={tooltip}
+        >
+          {aiLoading
+            ? "Analizzo…"
+            : annotatedCount > 0
+              ? "Rianalizza"
+              : `Analizza ${rowCount} righe`}
+        </AIButton>
+      )}
     </div>
   );
 }

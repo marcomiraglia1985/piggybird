@@ -33,6 +33,15 @@ export type ParsedRow = {
    *  Quando presente, l'import deve auto-confermare quella tx (date/amount dal CSV)
    *  invece di crearne una nuova. */
   confirmsRecurrence?: { txId: string; newDate: string; newAmount: number } | null;
+  /** Vincolo forte sull'account di destinazione (override del pair stage):
+   *  la riga deve finire su `suggestedAccount` se esiste, altrimenti viene
+   *  droppata. Usato per quirk specifici di una banca dove la riga riguarda
+   *  un conto diverso da quello del file (es. Revolut Current CSV che
+   *  contiene gli interessi del Savings). */
+  requireSuggestedAccount?: boolean;
+  /** Account ID risolto server-side da `suggestedAccount`. Se presente,
+   *  il commit deve usare questo invece dell'account scelto nel pair stage. */
+  forceAccountId?: string | null;
 };
 
 export type ParserResult = {

@@ -27,6 +27,11 @@ const ConfirmSchema = z.object({
   txId: z.string(),
   newDate: z.string(),
   newAmount: z.number(),
+  // Cleanups opzionali dall'AI Review: se la riga CSV aveva un beneficiary
+  // pulito o una categoria suggerita, applichiamoli alla pending tx.
+  beneficiary: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
+  categoryId: z.string().nullable().optional(),
 });
 
 const BodySchema = z.object({
@@ -129,22 +134,54 @@ export async function POST(req: NextRequest) {
     for (const c of parsed.data.confirmRecurrences) {
       const d = new Date(c.newDate);
       try {
+        // Aggiorna i campi sempre presenti + i cleanups AI Review se forniti.
+        // Patch object: includi beneficiary/notes/categoryId solo se l'utente
+        // (via AI Review) ha proposto un valore non-null. Mai sovrascrivere
+        // con null se la patch è "non specificato" (undefined).
+        const data: Record<string, unknown> = {
+          confirmed: true,
+          confirmedAt: new Date(),
+          date: d,
+          amount: c.newAmount,
+          year: d.getFullYear(),
+          month: d.getMonth() + 1,
+        };
+        if (c.beneficiary != null) data.beneficiary = c.beneficiary;
+        if (c.notes != null) data.notes = c.notes;
+        if (c.categoryId != null) data.categoryId = c.categoryId;
         await prisma.transaction.update({
           where: { id: c.txId },
-          data: {
-            confirmed: true,
-            confirmedAt: new Date(),
-            date: d,
-            amount: c.newAmount,
-            year: d.getFullYear(),
-            month: d.getMonth() + 1,
-          },
+          data,
         });
         confirmed++;
       } catch {
         // tx già cancellata o ID stale: skip silenzioso, non bloccare l'import
       }
     }
+  }
+
+  // Track lastCsvImportAt per i conti coinvolti — usato dal banner
+  // "Friendly reminder" che invita a ricaricare CSV stale > 14 giorni.
+  // Include sia conti dai rows inseriti/replaced sia i conti delle pending tx
+  // confermate. Best-effort: errori non rompono il commit.
+  const touchedAccountIds = new Set<string>();
+  for (const r of parsed.data.rows) {
+    if (r.accountId) touchedAccountIds.add(r.accountId);
+  }
+  if (parsed.data.confirmRecurrences?.length) {
+    const txs = await prisma.transaction.findMany({
+      where: { id: { in: parsed.data.confirmRecurrences.map((c) => c.txId) } },
+      select: { accountId: true },
+    });
+    for (const t of txs) touchedAccountIds.add(t.accountId);
+  }
+  if (touchedAccountIds.size > 0) {
+    await prisma.account
+      .updateMany({
+        where: { id: { in: [...touchedAccountIds] } },
+        data: { lastCsvImportAt: new Date() },
+      })
+      .catch(() => null);
   }
 
   return NextResponse.json({ inserted, confirmed, merged, replaced });

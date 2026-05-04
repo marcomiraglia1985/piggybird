@@ -15,6 +15,7 @@ import { WelcomeOnboarding } from "@/components/welcome-onboarding";
 import { TelemetryRouterTracker } from "@/components/telemetry-router-tracker";
 import { SentryUserContext } from "@/components/sentry-user-context";
 import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
+import { StaleCsvBanner } from "@/components/stale-csv-banner";
 import NextTopLoader from "nextjs-toploader";
 
 const geistSans = Geist({
@@ -80,6 +81,7 @@ export default async function RootLayout({
                 <Sidebar accountsFrozen={accountsFrozen} estatesAlert={estatesAlert} />
                 <div className="flex-1 flex flex-col min-w-0">
                   <Topbar />
+                  <StaleCsvBanner />
                   <main className="flex-1 p-6 max-w-7xl w-full mx-auto">{children}</main>
                 </div>
               </div>

@@ -39,7 +39,7 @@ export default async function ImpostazioniPage() {
         </Section>
       </div>
 
-      <Section title="Funzioni AI">
+      <Section title="Funzioni AI" id="ai">
         <div className="surface p-5">
           <AiFeaturesSection />
         </div>
@@ -82,9 +82,17 @@ export default async function ImpostazioniPage() {
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({
+  title,
+  id,
+  children,
+}: {
+  title: string;
+  id?: string;
+  children: React.ReactNode;
+}) {
   return (
-    <section className="space-y-3">
+    <section id={id} className="space-y-3 scroll-mt-6">
       <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)] px-1">
         {title}
       </h2>

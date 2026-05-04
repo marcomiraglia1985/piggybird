@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import Papa from "papaparse";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "./prisma";
-import { decrypt } from "./crypto";
 import type { ParsedRow, ParserResult } from "./csv-parsers/types";
 import { AI_MODELS, computeCallCostEur } from "./ai-pricing";
 import { notifyDevOfNewTemplate } from "./github";
 import { getUserProfile } from "./user-profile";
+import { resolveAnthropicApiKey } from "./anthropic-key-resolver";
+import { shareTemplateAsync } from "./template-sync";
+import { stripJsonFence } from "./ai/json-utils";
 import pkg from "../../package.json";
 
 async function notifyDevTeamForNewBank(
@@ -178,6 +180,48 @@ function parseDate(value: string, format: string): string | null {
   return null;
 }
 
+const ALLOWED_DELIMITERS = new Set([",", ";", "\t", "|"]);
+const ALLOWED_DATE_FORMATS = new Set([
+  "iso",
+  "dd/mm/yyyy",
+  "mm/dd/yyyy",
+  "yyyy-mm-dd",
+  "excel-serial",
+  "dd.mm.yyyy",
+  "dd-mm-yyyy",
+]);
+
+/**
+ * Validazione runtime di un mapping arbitrario (es. proveniente dal registry
+ * condiviso): bounds check su indici colonna, whitelist su delimiter/format/
+ * decimalSep. Difesa contro template avvelenati (mapping JSON sintatticamente
+ * valido ma con valori che corrompono il parser).
+ */
+export function isValidTemplateMapping(m: unknown): m is TemplateMapping {
+  if (!m || typeof m !== "object") return false;
+  const mp = m as Record<string, unknown>;
+  if (typeof mp.skipRows !== "number" || mp.skipRows < 0 || mp.skipRows > 100) return false;
+  if (typeof mp.headerRowIndex !== "number" || mp.headerRowIndex < 0 || mp.headerRowIndex > 100) return false;
+  if (typeof mp.dateCol !== "number" || mp.dateCol < 0 || mp.dateCol >= 100) return false;
+  if (typeof mp.dateFormat !== "string" || !ALLOWED_DATE_FORMATS.has(mp.dateFormat)) return false;
+  if (typeof mp.descriptionCol !== "number" || mp.descriptionCol < 0 || mp.descriptionCol >= 100) return false;
+  if (mp.decimalSep !== "," && mp.decimalSep !== ".") return false;
+  if (typeof mp.delimiter !== "string" || !ALLOWED_DELIMITERS.has(mp.delimiter)) return false;
+  if (mp.amountMode !== "signed" && mp.amountMode !== "split") return false;
+  if (mp.amountMode === "signed") {
+    if (typeof mp.amountCol !== "number" || mp.amountCol < 0 || mp.amountCol >= 100) return false;
+  } else {
+    if (typeof mp.entrateCol !== "number" || mp.entrateCol < 0 || mp.entrateCol >= 100) return false;
+    if (typeof mp.usciteCol !== "number" || mp.usciteCol < 0 || mp.usciteCol >= 100) return false;
+  }
+  if (typeof mp.defaultCurrency !== "string" || mp.defaultCurrency.length > 5) return false;
+  if (mp.longDescriptionCol != null) {
+    if (typeof mp.longDescriptionCol !== "number" || mp.longDescriptionCol < 0 || mp.longDescriptionCol >= 100) return false;
+  }
+  if (mp.bankName != null && typeof mp.bankName !== "string") return false;
+  return true;
+}
+
 /**
  * Applica un template mapping al CSV completo. Ritorna ParsedRow[]
  * deterministicamente — niente AI per riga.
@@ -248,39 +292,13 @@ export function applyTemplate(content: string, mapping: TemplateMapping): Parser
  * Chiama Claude (con BETA_AI_FALLBACK_KEY, server-only) per inferire un
  * TemplateMapping dalle prime 30 righe di un CSV non riconosciuto.
  */
-/**
- * Risolve la API key per il fallback. Priorità:
- *   1. `BETA_AI_FALLBACK_KEY` env var (production .app build, baked-in)
- *   2. Fallback dev: decrypt user key salvata in DB (Impostazioni → AI Features)
- *
- * Per il bundle distribuito agli amici, `BETA_AI_FALLBACK_KEY` DEVE essere
- * settata al build time — gli amici non hanno ancora una user key in DB
- * al primo upload.
- */
-async function resolveFallbackApiKey(): Promise<string | null> {
-  const fromEnv = process.env.BETA_AI_FALLBACK_KEY;
-  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
-  // Dev fallback: usa la user key dal DB
-  try {
-    const cred = await prisma.apiCredential.findUnique({
-      where: { provider: "anthropic" },
-    });
-    if (!cred) return null;
-    return decrypt({
-      ciphertext: cred.apiKey,
-      iv: cred.iv,
-      authTag: cred.authTag,
-    });
-  } catch {
-    return null;
-  }
-}
+// Key resolution centralizzata in `lib/anthropic-key-resolver.ts`
 
 async function inferTemplateWithAI(
   sampleRows: string[][],
   rawSample: string,
 ): Promise<{ mapping: TemplateMapping; costEur: number }> {
-  const apiKey = await resolveFallbackApiKey();
+  const apiKey = await resolveAnthropicApiKey();
   if (!apiKey) {
     throw new Error(
       "Nessuna API key disponibile per universal parser fallback. Configura BETA_AI_FALLBACK_KEY in .env oppure salva la tua chiave Anthropic da Impostazioni → AI Features.",
@@ -341,15 +359,7 @@ Ritorna solo il JSON mapping.`;
     .map((c) => (c as { text: string }).text)
     .join("");
 
-  // Strip eventuale markdown fence
-  let cleanText = text.trim();
-  if (cleanText.startsWith("```")) {
-    cleanText = cleanText
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-  }
-
+  const cleanText = stripJsonFence(text);
   let mapping: TemplateMapping;
   try {
     mapping = JSON.parse(cleanText) as TemplateMapping;
@@ -438,19 +448,30 @@ export async function parseUniversalWithFallback(
   // Cache lookup
   const cached = await prisma.parserTemplate.findUnique({ where: { signature } });
   if (cached) {
-    const mapping = JSON.parse(cached.mapping) as TemplateMapping;
-    // Bump usage counter (non-blocking)
-    prisma.parserTemplate
-      .update({
-        where: { signature },
-        data: { usageCount: { increment: 1 } },
-      })
-      .catch(() => null);
-    const result = applyTemplate(content, mapping);
-    result.warnings.unshift(
-      `Riconosciuto come ${cached.bankName ?? "formato salvato"} (cache, no AI call)`,
-    );
-    return result;
+    let mapping: TemplateMapping | null = null;
+    try {
+      const parsed = JSON.parse(cached.mapping) as unknown;
+      if (isValidTemplateMapping(parsed)) mapping = parsed;
+    } catch {
+      // fallthrough: mapping null → discard e re-infer
+    }
+    if (mapping) {
+      // Bump usage counter (non-blocking)
+      prisma.parserTemplate
+        .update({
+          where: { signature },
+          data: { usageCount: { increment: 1 } },
+        })
+        .catch(() => null);
+      const result = applyTemplate(content, mapping);
+      result.warnings.unshift(
+        `Riconosciuto come ${cached.bankName ?? "formato salvato"} (cache, no AI call)`,
+      );
+      return result;
+    }
+    // Mapping invalido (corruzione o template avvelenato dal registry):
+    // cancella e ricade nell'AI inference qui sotto.
+    prisma.parserTemplate.delete({ where: { signature } }).catch(() => null);
   }
 
   // AI inference
@@ -478,6 +499,14 @@ export async function parseUniversalWithFallback(
 
   // Notifica dev team async (fire-and-forget). Non bloccare l'import utente.
   void notifyDevTeamForNewBank(mapping.bankName ?? "Sconosciuto", signature, sampleHeadersJoined, mapping);
+
+  // Share al registry condiviso (opt-in tramite Setting "templates.share").
+  shareTemplateAsync({
+    signature,
+    mapping: JSON.stringify(mapping),
+    bankName: mapping.bankName ?? null,
+    kind: "bank",
+  });
 
   const result = applyTemplate(content, mapping);
   result.warnings.unshift(

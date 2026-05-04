@@ -52,6 +52,10 @@ next-env.d.ts
 
 /src/generated/prisma
 
+# Templates registry bundle: generato pre-build da `npm run sync-templates`
+# fetchando il registry live. Non versionato per evitare diff a ogni sync.
+/src/lib/csv-parsers/learned-templates.json
+
 # Rust / Tauri build artifacts
 src-tauri/target/
 src-tauri/Cargo.lock

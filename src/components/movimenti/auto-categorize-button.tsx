@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { AIButton, AIBadge } from "@/components/ui/ai-button";
+import { ConfigureAiCta } from "@/components/ai/configure-ai-cta";
+import { useAiConfigured } from "@/hooks/use-ai-configured";
 import { AiDisclaimer } from "@/components/ui/ai-disclaimer";
 import { useToast } from "@/components/ui/toast";
 import { formatEUR, formatDate, cn } from "@/lib/utils";
@@ -112,6 +114,7 @@ export function AutoCategorizeButton({
   const [pickedLimit, setPickedLimit] = useState<number | null>(null);
   const [loadingElapsed, setLoadingElapsed] = useState(0);
   const loadingStartRef = useRef<number | null>(null);
+  const aiConfigured = useAiConfigured();
 
   // Tick ogni 500ms mentre stiamo caricando, per aggiornare counter + progress
   useEffect(() => {
@@ -423,9 +426,19 @@ export function AutoCategorizeButton({
 
   return (
     <>
-      <AIButton onClick={openModal} variant="subtle" size="sm">
-        Auto-categorize
-      </AIButton>
+      {aiConfigured === false ? (
+        <ConfigureAiCta />
+      ) : (
+        <AIButton
+          onClick={openModal}
+          variant="subtle"
+          size="sm"
+          disabled={aiConfigured === null}
+          title={aiConfigured === null ? "Verifica configurazione AI…" : undefined}
+        >
+          Auto-categorize
+        </AIButton>
+      )}
 
       {open && (
         <div

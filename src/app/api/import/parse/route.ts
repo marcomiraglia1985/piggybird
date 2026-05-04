@@ -3,6 +3,10 @@ import { parseAnyWithFallback, xlsxToCsv } from "@/lib/csv-parsers/dispatcher";
 import { suggestCategoriesBatch } from "@/lib/categorize";
 import { fingerprintBeneficiary } from "@/lib/beneficiary-fingerprint";
 import { prisma } from "@/lib/prisma";
+import {
+  seedLearnedTemplates,
+  syncTemplatesFromRegistry,
+} from "@/lib/template-sync";
 
 export const runtime = "nodejs";
 
@@ -12,6 +16,12 @@ export async function POST(req: NextRequest) {
   if (!file || typeof file === "string") {
     return NextResponse.json({ error: "Nessun file" }, { status: 400 });
   }
+
+  // Seed + sync fire-and-forget: non blocca la response. Il template di
+  // questa banca specifica è già nel DB (cache) o sarà imparato via AI; il
+  // beneficio del seed/sync è per le banche FUTURE non ancora importate.
+  void seedLearnedTemplates();
+  void syncTemplatesFromRegistry(60 * 60 * 1000);
 
   // Supporta sia CSV che XLSX (rilevamento per nome o magic bytes)
   const fileName = (file as File).name?.toLowerCase() ?? "";
@@ -36,6 +46,41 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Quirk routing: per le righe con `requireSuggestedAccount=true` (es.
+  // interessi savings nel CSV Current di Revolut) risolviamo il nome conto
+  // suggerito → ID. Se il conto esiste, settiamo `forceAccountId` per
+  // overridare la scelta del pair stage. Altrimenti DROP della riga (l'utente
+  // non ha quel conto configurato — non vogliamo creare tx fantasma).
+  {
+    const accountsByName = await prisma.account.findMany({
+      where: { active: true },
+      select: { id: true, name: true },
+    });
+    const idByName = new Map(accountsByName.map((a) => [a.name, a.id]));
+    let droppedQuirk = 0;
+    let redirectedQuirk = 0;
+    result.rows = result.rows.flatMap((row) => {
+      if (!row.requireSuggestedAccount) return [row];
+      const targetId = row.suggestedAccount ? idByName.get(row.suggestedAccount) : null;
+      if (!targetId) {
+        droppedQuirk++;
+        return [];
+      }
+      redirectedQuirk++;
+      return [{ ...row, forceAccountId: targetId }];
+    });
+    if (droppedQuirk > 0) {
+      result.warnings.push(
+        `${droppedQuirk} righe interessi del Savings ignorate (nessun conto Revolut Savings configurato)`,
+      );
+    }
+    if (redirectedQuirk > 0) {
+      result.warnings.push(
+        `${redirectedQuirk} righe interessi del Savings reindirizzate al conto deposito`,
+      );
+    }
+  }
+
   // Auto-categorize from history
   const descriptions = result.rows.map((r) => r.description);
   const suggestions = await suggestCategoriesBatch(descriptions);
@@ -55,18 +100,18 @@ export async function POST(req: NextRequest) {
       where: {
         date: { gte: minDate, lt: maxDate },
       },
-      select: { id: true, date: true, amount: true, beneficiary: true, notes: true },
+      select: { id: true, date: true, amount: true, beneficiary: true, notes: true, confirmed: true },
     });
 
     // Dedup index: cerca match su (data, importo) e poi controlla che la
     // descrizione sia simile (prefisso comune di 4+ char, case-insensitive).
-    type Candidate = { id: string; description: string };
+    type Candidate = { id: string; description: string; confirmed: boolean };
     const dupeIndex = new Map<string, Candidate[]>();
     for (const e of existing) {
       const key = `${e.date.toISOString().slice(0, 10)}|${e.amount.toFixed(2)}`;
       const desc = ((e.beneficiary ?? "") + " " + (e.notes ?? "")).trim().toLowerCase();
       const arr = dupeIndex.get(key) ?? [];
-      arr.push({ id: e.id, description: desc });
+      arr.push({ id: e.id, description: desc, confirmed: e.confirmed });
       dupeIndex.set(key, arr);
     }
 
@@ -119,7 +164,7 @@ export async function POST(req: NextRequest) {
     maxDateExt.setDate(maxDateExt.getDate() + 15);
     const fuzzyDb = await prisma.transaction.findMany({
       where: { date: { gte: minDateExt, lt: maxDateExt } },
-      select: { id: true, date: true, amount: true, beneficiary: true, notes: true },
+      select: { id: true, date: true, amount: true, beneficiary: true, notes: true, confirmed: true },
     });
 
     // Tx ricorrenti programmate (confirmed=false con recurrenceGroupId): per
@@ -147,7 +192,18 @@ export async function POST(req: NextRequest) {
       if (candidates) {
         const desc = row.description.toLowerCase();
         const match = candidates.find((c) => descriptionsMatch(desc, c.description));
-        if (match) row.duplicateOf = match.id;
+        if (match) {
+          row.duplicateOf = match.id;
+          // Se la tx esistente è ancora pending (programmata, non confermata),
+          // il commit la confermerà al posto di creare un duplicato nascosto.
+          if (!match.confirmed) {
+            row.confirmsRecurrence = {
+              txId: match.id,
+              newDate: row.date,
+              newAmount: row.amount,
+            };
+          }
+        }
       }
 
       // Fuzzy dedup ±N giorni con stesso importo + descrizione simile.
@@ -166,7 +222,16 @@ export async function POST(req: NextRequest) {
           const eDesc = ((e.beneficiary ?? "") + " " + (e.notes ?? "")).trim().toLowerCase();
           return descriptionsMatch(desc, eDesc);
         });
-        if (fuzzy) row.duplicateOf = fuzzy.id;
+        if (fuzzy) {
+          row.duplicateOf = fuzzy.id;
+          if (!fuzzy.confirmed) {
+            row.confirmsRecurrence = {
+              txId: fuzzy.id,
+              newDate: row.date,
+              newAmount: row.amount,
+            };
+          }
+        }
       }
 
       // Match TOLLERANTE su importo per ricorrenze programmate: stessa

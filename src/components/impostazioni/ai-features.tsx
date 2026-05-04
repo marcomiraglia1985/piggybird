@@ -10,9 +10,12 @@ import {
   ExternalLink,
   Eye,
   EyeOff,
+  Share2,
+  RefreshCw,
 } from "lucide-react";
 import { AIBadge } from "@/components/ui/ai-button";
 import { formatCostEur } from "@/lib/ai-pricing";
+import { TEMPLATE_SETTINGS } from "@/lib/template-settings-keys";
 
 type CredentialStatus = {
   configured: boolean;
@@ -283,7 +286,128 @@ export function AiFeaturesSection() {
             <span>{success}</span>
           </div>
         )}
+
+        <div className="mt-6 pt-5 border-t border-[var(--border)]">
+          <TemplateShareSection />
+        </div>
       </CardContent>
+    </div>
+  );
+}
+
+/**
+ * Sezione "Condivisione parser banche" — toggle opt-in per inviare al
+ * registry condiviso i template appena imparati via AI fallback. Privacy
+ * disclosure esplicita: cosa parte e cosa NO.
+ */
+function TemplateShareSection() {
+  // Init `true` (default ON) per evitare flicker: il valore reale si carica
+  // dal DB nello useEffect; se differisce viene corretto. Senza questo
+  // l'utente vedrebbe la checkbox unspuntata per qualche ms.
+  const [enabled, setEnabled] = useState<boolean | null>(true);
+  const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMsg, setSyncMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/settings")
+      .then((r) => r.json())
+      .then((d) => {
+        // Default ON: solo "false" esplicito disabilita il share.
+        const v = d.settings?.[TEMPLATE_SETTINGS.share];
+        setEnabled(v !== "false");
+      })
+      .catch(() => setEnabled(true));
+  }, []);
+
+  async function toggle(next: boolean) {
+    setSaving(true);
+    try {
+      await fetch("/api/settings", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ key: TEMPLATE_SETTINGS.share, value: next ? "true" : "false" }),
+      });
+      setEnabled(next);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function syncNow() {
+    setSyncing(true);
+    setSyncMsg(null);
+    try {
+      const res = await fetch("/api/templates/sync", { method: "POST" });
+      const data = await res.json();
+      const n = data?.inserted ?? 0;
+      setSyncMsg(
+        n > 0 ? `${n} ${n === 1 ? "nuovo parser" : "nuovi parser"} sincronizzato${n === 1 ? "" : "i"}` : "Già aggiornato",
+      );
+      setTimeout(() => setSyncMsg(null), 4000);
+    } catch {
+      setSyncMsg("Errore di rete durante il sync");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start gap-2">
+        <Share2 className="size-4 text-orange-400 mt-0.5 shrink-0" />
+        <div className="flex-1">
+          <h3 className="text-sm font-medium">Condivisione parser banche</h3>
+          <p className="text-xs text-[var(--fg-muted)] mt-1 leading-relaxed">
+            Quando il fallback AI impara una banca nuova, condividi il parser
+            anonimo con gli altri utenti dell&apos;app: tutti potranno
+            riconoscere la stessa banca senza ulteriori chiamate AI.
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-md border border-[var(--border)] bg-[var(--surface-2)]/40 p-3 text-[11px] space-y-1.5">
+        <div className="flex items-center gap-2">
+          <CheckCircle2 className="size-3 text-emerald-400 shrink-0" />
+          <span>
+            <strong>Inviato:</strong> hash dell&apos;header CSV + indici colonna
+            + format codes (es. <code>&quot;dd/mm/yyyy&quot;</code>) + nome banca
+            sanitizzato
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="size-3 text-rose-400 shrink-0" />
+          <span>
+            <strong>Mai inviato:</strong> righe transazione, importi,
+            beneficiari, header testuali, info account, identificativi utente
+          </span>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="inline-flex items-center gap-2 cursor-pointer text-xs">
+          <input
+            type="checkbox"
+            checked={enabled === true}
+            onChange={(e) => toggle(e.target.checked)}
+            disabled={enabled === null || saving}
+            className="accent-orange-500"
+          />
+          <span>Condividi parser anonimi (attivo per default)</span>
+        </label>
+        <button
+          type="button"
+          onClick={syncNow}
+          disabled={syncing}
+          className="inline-flex items-center gap-1.5 h-8 px-3 rounded-md border border-[var(--border)] bg-[var(--surface-2)] text-xs hover:border-[var(--border-strong)] disabled:opacity-50"
+        >
+          <RefreshCw className={`size-3 ${syncing ? "animate-spin" : ""}`} />
+          {syncing ? "Sincronizzo…" : "Sincronizza ora"}
+        </button>
+        {syncMsg && (
+          <span className="text-[11px] text-[var(--fg-muted)]">{syncMsg}</span>
+        )}
+      </div>
     </div>
   );
 }

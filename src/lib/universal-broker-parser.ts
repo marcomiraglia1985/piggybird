@@ -2,11 +2,13 @@ import { createHash } from "node:crypto";
 import Papa from "papaparse";
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "./prisma";
-import { decrypt } from "./crypto";
 import type { ParseResult, StockEvent } from "./broker-parsers/types";
 import { AI_MODELS, computeCallCostEur } from "./ai-pricing";
 import { notifyDevOfNewTemplate } from "./github";
 import { getUserProfile } from "./user-profile";
+import { resolveAnthropicApiKey } from "./anthropic-key-resolver";
+import { shareTemplateAsync } from "./template-sync";
+import { stripJsonFence } from "./ai/json-utils";
 import pkg from "../../package.json";
 
 /**
@@ -147,28 +149,12 @@ export function applyBrokerTemplate(
   return { ok: true, platform: m.platform, events };
 }
 
-async function resolveFallbackApiKey(): Promise<string | null> {
-  const fromEnv = process.env.BETA_AI_FALLBACK_KEY;
-  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
-  try {
-    const cred = await prisma.apiCredential.findUnique({
-      where: { provider: "anthropic" },
-    });
-    if (!cred) return null;
-    return decrypt({
-      ciphertext: cred.apiKey,
-      iv: cred.iv,
-      authTag: cred.authTag,
-    });
-  } catch {
-    return null;
-  }
-}
+// Key resolution centralizzata in `lib/anthropic-key-resolver.ts`
 
 async function inferBrokerTemplateWithAI(
   sampleRows: string[][],
 ): Promise<{ mapping: BrokerTemplateMapping; costEur: number }> {
-  const apiKey = await resolveFallbackApiKey();
+  const apiKey = await resolveAnthropicApiKey();
   if (!apiKey) {
     throw new Error(
       "Nessuna API key disponibile per universal broker fallback. Configura BETA_AI_FALLBACK_KEY in .env oppure salva la tua chiave Anthropic.",
@@ -234,14 +220,7 @@ Ritorna solo il JSON mapping per parsare questo CSV come StockEvent[].`;
     .map((c) => (c as { text: string }).text)
     .join("");
 
-  let cleanText = text.trim();
-  if (cleanText.startsWith("```")) {
-    cleanText = cleanText
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```\s*$/i, "")
-      .trim();
-  }
-
+  const cleanText = stripJsonFence(text);
   let mapping: BrokerTemplateMapping;
   try {
     mapping = JSON.parse(cleanText) as BrokerTemplateMapping;
@@ -373,6 +352,14 @@ export async function parseAnyBrokerWithFallback(csv: string): Promise<ParseResu
         });
       } catch {}
     })();
+
+    // Share al registry condiviso (opt-in tramite Setting "templates.share").
+    shareTemplateAsync({
+      signature,
+      mapping: JSON.stringify(mapping),
+      bankName: mapping.brokerName ?? null,
+      kind: "broker",
+    });
 
     return applyBrokerTemplate(csv, mapping);
   } catch (e) {

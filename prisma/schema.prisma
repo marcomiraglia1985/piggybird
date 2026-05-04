@@ -46,6 +46,11 @@ model Account {
    *  Il primo membro è convenzionalmente l'utente proprietario dell'app.
    *  Null per conti non-friendsplit. */
   membersJson        String?
+  /** Timestamp dell'ultimo import CSV/XLSX andato a commit per questo conto.
+   *  Null = mai importato (es. account API-only come Binance, o conto appena
+   *  creato). Usato per il banner "Friendly reminder" che invita l'utente a
+   *  ricaricare CSV stale > 14 giorni. */
+  lastCsvImportAt    DateTime?
 
   transactions   Transaction[]
   balances       AccountBalance[]

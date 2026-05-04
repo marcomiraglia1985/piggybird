@@ -133,7 +133,8 @@ export function parseRevolutCSV(content: string): ParserResult {
     }
 
     const product = (r.product ?? "").trim().toLowerCase();
-    const suggestedAccount = PRODUCT_TO_ACCOUNT[product] ?? "Revolut";
+    let suggestedAccount = PRODUCT_TO_ACCOUNT[product] ?? "Revolut";
+    let requireSuggestedAccount = false;
 
     // REVX = Revolut Stocks/Crypto trasferimento
     let suggestedCategoryEmoji: string | null = null;
@@ -141,14 +142,26 @@ export function parseRevolutCSV(content: string): ParserResult {
       suggestedCategoryEmoji = "📈"; // Stocks Revolut by default
     }
 
-    // Interessi su Revolut Savings: descrizioni tipiche "Interest", "Interest payment",
-    // "Interesse", "Daily interest". Match prudente — solo su prodotto savings/vault
-    // per evitare falsi positivi (es. "Internet…" su conto corrente).
-    if (
+    // Quirk Revolut: gli interessi pagati sul conto deposito (Savings vault)
+    // appaiono ANCHE nel CSV del Current account (passthrough tecnico). Sappiamo
+    // per certo che sono il "lato Savings" di un evento — vanno sul conto
+    // savings, non sul current. Match sul testo IT/EN tipico di Revolut.
+    const isSavingsInterestPassthrough =
+      amount > 0 &&
+      /interessi netti pagati nel conto|interest paid (?:to|in) (?:the )?(?:saving|vault|conto deposito)/i.test(
+        description,
+      );
+    if (isSavingsInterestPassthrough && suggestedAccount !== "Revolut Savings") {
+      suggestedAccount = "Revolut Savings";
+      requireSuggestedAccount = true; // → drop se l'utente non ha Savings
+      suggestedCategoryEmoji = "💰";
+    } else if (
       suggestedAccount === "Revolut Savings" &&
       amount > 0 &&
       /\b(interest|interesse|interessi)\b/i.test(description)
     ) {
+      // Match prudente — solo su prodotto savings/vault per evitare falsi
+      // positivi (es. "Internet…" su conto corrente).
       suggestedCategoryEmoji = "💰";
     }
 
@@ -164,6 +177,7 @@ export function parseRevolutCSV(content: string): ParserResult {
       description,
       rawType: type,
       suggestedAccount,
+      requireSuggestedAccount: requireSuggestedAccount || undefined,
       suggestedCategoryEmoji,
       currency,
     });

@@ -15,6 +15,11 @@ set -e
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$APP_DIR"
 
+echo "→ [tauri-prebuild] Sync templates community → bundle locale..."
+# Best-effort: se il registry è down o offline, prosegui con quello che c'è.
+# Il file generato è gitignored, ogni build lo rigenera.
+npm run sync-templates 2>&1 || echo "  ⚠ sync-templates non riuscito, uso bundle esistente"
+
 echo "→ [tauri-prebuild] Next.js standalone build..."
 npm run build
 
