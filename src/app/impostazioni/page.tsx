@@ -8,6 +8,7 @@ import { PreferenzeSection } from "@/components/impostazioni/preferenze-section"
 import { SistemaSection } from "@/components/impostazioni/sistema-section";
 import { DatiSection } from "@/components/impostazioni/dati-section";
 import { NotificheSection } from "@/components/impostazioni/notifiche-section";
+import { PrivacySection } from "@/components/impostazioni/privacy-section";
 
 export const dynamic = "force-dynamic";
 
@@ -68,6 +69,10 @@ export default async function ImpostazioniPage() {
 
       <Section title="Notifiche">
         <NotificheSection />
+      </Section>
+
+      <Section title="Privacy">
+        <PrivacySection />
       </Section>
 
       <p className="text-[11px] text-[var(--fg-subtle)] text-center pt-4 pb-2">

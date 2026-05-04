@@ -33,6 +33,7 @@ import { AssetAllocationWidget } from "@/components/dashboard/asset-allocation-w
 import { AnniversaryWidget } from "@/components/dashboard/anniversary-widget";
 import { EstateRoiWidget } from "@/components/dashboard/estate-roi-widget";
 import { CoffeeTrackerWidget } from "@/components/dashboard/coffee-tracker-widget";
+import { CashflowSankeyWidget } from "@/components/dashboard/cashflow-sankey-widget";
 import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
 import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
 import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
@@ -163,6 +164,14 @@ export default async function Dashboard() {
             minSpan: 1,
             maxSpan: 3,
             removable: false,
+          },
+          {
+            id: "cashflow-sankey",
+            label: "Dove vanno i soldi",
+            node: <CashflowSankeyWidget key="cashflow-sankey" />,
+            defaultSpan: 3,
+            minSpan: 2,
+            maxSpan: 3,
           },
           {
             id: "accounts",

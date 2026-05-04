@@ -12,6 +12,7 @@ import { prisma } from "@/lib/prisma";
 import { estateValueStatus } from "@/lib/estate-value";
 import { hasCompletedOnboarding } from "@/lib/user-profile";
 import { WelcomeOnboarding } from "@/components/welcome-onboarding";
+import { TelemetryRouterTracker } from "@/components/telemetry-router-tracker";
 import { SentryUserContext } from "@/components/sentry-user-context";
 import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
 import NextTopLoader from "nextjs-toploader";
@@ -87,6 +88,7 @@ export default async function RootLayout({
               {/* Floating "Report a bug" button: visibile su tutte le pagine */}
               <DebugSnapshotSection />
               {!onboarded && <WelcomeOnboarding />}
+              <TelemetryRouterTracker />
             </ConfirmProvider>
           </ToastProvider>
         </PreferencesBootstrap>
