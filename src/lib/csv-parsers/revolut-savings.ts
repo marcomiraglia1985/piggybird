@@ -84,13 +84,16 @@ export function parseRevolutSavings(content: string): ParserResult {
     const externalId = [dateStr, amount.toFixed(2), description.slice(0, 32)].join("|");
 
     // Categoria suggerita per i pattern noti del CSV Savings:
-    // - "Interessi netti pagati nel conto Conto deposito" → 💰 (Interessi)
-    // - "Deposito sul conto Conto deposito" / "Prelievo dal conto" → ↔️ (Transfer)
+    // - "Interessi netti pagati nel conto Conto deposito" → 💰 Interessi (income)
+    // - "Deposito sul conto Conto deposito" / "Prelievo dal conto" → ↔️ Giroconto
     let suggestedCategoryEmoji: string | null = null;
+    let suggestedCategoryName: string | null = null;
     if (/interessi netti|interest paid/i.test(description)) {
       suggestedCategoryEmoji = "💰";
+      suggestedCategoryName = "Interessi";
     } else if (/deposito sul conto|prelievo dal conto|transfer/i.test(description)) {
       suggestedCategoryEmoji = "↔️";
+      suggestedCategoryName = "Giroconto";
     }
 
     rows.push({
@@ -100,6 +103,7 @@ export function parseRevolutSavings(content: string): ParserResult {
       description,
       suggestedAccount: "Revolut Savings",
       suggestedCategoryEmoji,
+      suggestedCategoryName,
       currency: "EUR",
     });
   }

@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { formatEUR, formatDate } from "@/lib/utils";
 import { CointestatoEditButton } from "@/components/cointestato/edit-cointestato";
+import { getDisplayBalances } from "@/lib/account-freeze";
 
 export const dynamic = "force-dynamic";
 
@@ -24,10 +25,13 @@ export default async function CointestatoPage({
     include: { account: true, category: true },
   });
 
-  const account = await prisma.account.findFirst({
+  const accountRaw = await prisma.account.findFirst({
     where: { type: "joint", active: true },
     orderBy: [{ displayOrder: "asc" }, { createdAt: "asc" }],
   });
+  // displayBalance = currentBalance + tx confermate dopo frozenAt (Live mode),
+  // così la card "Saldo" si allinea a /conti.
+  const [account] = accountRaw ? await getDisplayBalances([accountRaw]) : [null];
 
   // Totali calcolati su TUTTE le tx (count via aggregate, non solo le visibili)
   const allAggregates = await prisma.transaction.aggregate({
@@ -98,7 +102,7 @@ export default async function CointestatoPage({
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-semibold tabular-nums">
-              {formatEUR(account?.currentBalance ?? 0)}
+              {formatEUR(account?.displayBalance ?? 0)}
             </div>
           </CardContent>
         </Card>

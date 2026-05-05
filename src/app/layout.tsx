@@ -16,6 +16,7 @@ import { TelemetryRouterTracker } from "@/components/telemetry-router-tracker";
 import { SentryUserContext } from "@/components/sentry-user-context";
 import { DebugSnapshotSection } from "@/components/impostazioni/debug-snapshot-section";
 import { StaleCsvBanner } from "@/components/stale-csv-banner";
+import { PiggybirdFinanceBanner } from "@/components/piggybird-finance-banner";
 import NextTopLoader from "nextjs-toploader";
 
 const geistSans = Geist({
@@ -27,6 +28,7 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
 
 export const metadata: Metadata = {
   title: "Piggybird",
@@ -82,6 +84,7 @@ export default async function RootLayout({
                 <div className="flex-1 flex flex-col min-w-0">
                   <Topbar />
                   <StaleCsvBanner />
+                  <PiggybirdFinanceBanner />
                   <main className="flex-1 p-6 max-w-7xl w-full mx-auto">{children}</main>
                 </div>
               </div>

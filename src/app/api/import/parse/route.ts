@@ -137,8 +137,52 @@ export async function POST(req: NextRequest) {
       if (!aN || !bN) return true; // se una manca, accetta solo data+importo
       if (aN === bN) return true;
       if (aN.includes(bN) || bN.includes(aN)) return true;
+      // Se entrambe le description contengono una data e quelle DATE DIFFERISCONO,
+      // sono record diversi (caso tipico: Revolut Savings paga interessi giornalieri
+      // e la causale contiene "in data X" — senza questo check le tx giornaliere
+      // di pari importo si auto-deduplicano via prefix-match "Interessi…").
+      const aDate = extractDate(aN);
+      const bDate = extractDate(bN);
+      if (aDate && bDate && aDate !== bDate) return false;
       const prefix = Math.min(8, Math.min(aN.length, bN.length));
       return prefix >= 4 && aN.slice(0, prefix) === bN.slice(0, prefix);
+    }
+
+    /** Estrae la prima data da una stringa lowercase. Supporta formati:
+     *  - IT: "1 apr 2026"
+     *  - EN: "apr 24, 2026" / "apr 24 2026"
+     *  - Slash/dash/dot: "01/04/2026", "01-04-2026", "01.04.2026"
+     *  - ISO: "2026-04-01"
+     *  Ritorna stringa normalizzata (yyyy-mm-dd) o null. */
+    function extractDate(s: string): string | null {
+      const monthsIt: Record<string, string> = {
+        gen: "01", feb: "02", mar: "03", apr: "04", mag: "05", giu: "06",
+        lug: "07", ago: "08", set: "09", ott: "10", nov: "11", dic: "12",
+      };
+      const monthsEn: Record<string, string> = {
+        jan: "01", feb: "02", mar: "03", apr: "04", may: "05", jun: "06",
+        jul: "07", aug: "08", sep: "09", oct: "10", nov: "11", dec: "12",
+      };
+      const allMonths = { ...monthsEn, ...monthsIt };
+      // "1 apr 2026" (day month year, IT/EN abbrev)
+      const m1 = s.match(/(\d{1,2})\s+([a-z]{3,9})\s+(\d{4})/);
+      if (m1) {
+        const mo = allMonths[m1[2].slice(0, 3)];
+        if (mo) return `${m1[3]}-${mo}-${m1[1].padStart(2, "0")}`;
+      }
+      // "apr 24, 2026" o "apr 24 2026" (month day year, EN/IT abbrev)
+      const m2 = s.match(/([a-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/);
+      if (m2) {
+        const mo = allMonths[m2[1].slice(0, 3)];
+        if (mo) return `${m2[3]}-${mo}-${m2[2].padStart(2, "0")}`;
+      }
+      // "01/04/2026" o "01-04-2026" o "01.04.2026"
+      const m3 = s.match(/(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})/);
+      if (m3) return `${m3[3]}-${m3[2].padStart(2, "0")}-${m3[1].padStart(2, "0")}`;
+      // "2026-04-01"
+      const m4 = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+      if (m4) return m4[0];
+      return null;
     }
 
     // Split-dedup: indicizza tutte le righe DB per data, così possiamo

@@ -45,7 +45,7 @@ export async function StaleCsvBanner() {
             <div className="mt-3 flex items-center gap-2 flex-wrap">
               <Link
                 href="/import"
-                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white text-sm font-medium shadow-md shadow-orange-500/25 hover:shadow-orange-500/40"
+                className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white text-sm font-medium shadow-md shadow-orange-500/25 hover:shadow-orange-500/45"
               >
                 Vai a Importa
                 <ArrowRight className="size-4" />

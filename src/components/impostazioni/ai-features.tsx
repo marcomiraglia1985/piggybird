@@ -261,7 +261,7 @@ export function AiFeaturesSection() {
                 type="button"
                 onClick={onSave}
                 disabled={saving || !apiKey.trim()}
-                className="h-9 px-4 rounded-lg bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white text-sm font-medium shadow-md shadow-orange-500/25 hover:shadow-orange-500/40 disabled:opacity-40 disabled:shadow-none"
+                className="h-9 px-4 rounded-lg bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white text-sm font-medium shadow-md shadow-orange-500/25 hover:shadow-orange-500/45 disabled:opacity-40 disabled:shadow-none"
               >
                 {saving ? "Verifica…" : "Salva e testa"}
               </button>

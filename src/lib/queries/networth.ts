@@ -1,43 +1,38 @@
 import { prisma } from "../prisma";
 import { roundEur } from "../utils";
+import { getDisplayBalances } from "../account-freeze";
 
 /**
  * Net worth corrente: ogni saldo è moltiplicato per `ownershipShare`
  * (es. cointestato 2/3) per riflettere la quota effettivamente posseduta.
+ *
+ * Usa `getDisplayBalances` (NON currentBalance raw) così che in modalità Live
+ * le tx confermate dopo l'ultimo freeze si riflettano nel net worth — senza
+ * questo, dashboard/widget restano indietro su nuovi import CSV.
  *
  * I totali aggregati passano per `roundEur` per evitare drift Float visibile
  * (es. 1234.5599999... → 1234.56) — non un fix strutturale del precision-debt
  * sullo schema, ma rende stabile la dashboard.
  */
 export async function getCurrentNetWorth() {
-  const accounts = await prisma.account.findMany({ where: { active: true } });
-  const effective = (a: { currentBalance: number; ownershipShare: number }) =>
-    a.currentBalance * a.ownershipShare;
+  const accountsRaw = await prisma.account.findMany({ where: { active: true } });
+  const accounts = await getDisplayBalances(accountsRaw);
+  const effective = (a: { displayBalance: number; ownershipShare: number }) =>
+    a.displayBalance * a.ownershipShare;
+
+  // Friendsplit: getDisplayBalances già calcola displayBalance come net
+  // debit/credit (sum tx ignorando freeze) per type="friendsplit". Niente
+  // ownershipShare: l'amount delle tx è già al netto delle quote (es. cena
+  // diviso 4 → tx contiene la mia quota, non il totale).
+  const fsNet = accounts
+    .filter((a) => a.type === "friendsplit")
+    .reduce((s, a) => s + a.displayBalance, 0);
 
   const liquidNonFs = accounts
     .filter((a) => a.type === "liquid" || a.type === "cash" || a.type === "joint")
     .reduce((s, a) => s + effective(a), 0);
 
-  // Friendsplit: net debit/credit (sum di tutte le tx). Coerente con
-  // /friendsplit page. Si somma alla liquidità come receivable/payable.
-  //
-  // NOTA: ownershipShare NON viene applicato ai friendsplit accounts:
-  // l'amount delle tx è già al netto delle quote (es. cena diviso 4 → tx
-  // contiene la mia quota, non il totale). Applicare ownership darebbe
-  // doppio scaling. Il campo Account.ownershipShare resta a 1.0 di default
-  // per friendsplit, ignorato qui.
-  const fsAccounts = accounts.filter((a) => a.type === "friendsplit");
-  let friendsplitNet = 0;
-  if (fsAccounts.length > 0) {
-    const sums = await prisma.transaction.groupBy({
-      by: ["accountId"],
-      where: { accountId: { in: fsAccounts.map((a) => a.id) } },
-      _sum: { amount: true },
-    });
-    friendsplitNet = sums.reduce((s, x) => s + (x._sum.amount ?? 0), 0);
-  }
-
-  const liquidity = roundEur(liquidNonFs + friendsplitNet);
+  const liquidity = roundEur(liquidNonFs + fsNet);
   const savings = roundEur(
     accounts.filter((a) => a.type === "savings").reduce((s, a) => s + effective(a), 0),
   );
@@ -48,10 +43,13 @@ export async function getCurrentNetWorth() {
 }
 
 export async function getAccountsBreakdown() {
-  return prisma.account.findMany({
+  const raw = await prisma.account.findMany({
     where: { active: true },
     orderBy: { displayOrder: "asc" },
   });
+  // displayBalance così il widget Conti su dashboard si allinea a /conti
+  // (Live mode: somma tx confermate dopo frozenAt).
+  return getDisplayBalances(raw);
 }
 
 export async function getNetWorthHistory() {

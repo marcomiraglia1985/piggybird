@@ -97,6 +97,10 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+html {
+  scroll-behavior: smooth;
+}
+
 body {
   background-image:
     radial-gradient(ellipse 80% 50% at 50% -10%, rgba(var(--bg-tint), var(--bg-alpha-1)), transparent),
@@ -235,9 +239,8 @@ body {
     transparent 80%
   );
 }
-.ai-btn:hover .ai-spotlight {
-  opacity: 1;
-}
+/* Spotlight rimosso su hover — l'ombra scura ellittica che seguiva il
+   cursore non convinceva. Lo lasciamo definito ma con opacity sempre 0. */
 /* Variante subtle: invece di scuro mostra un alone caldo (amber/orange) — sul
    bg già trasparente uno scuro non si nota, un caldo brilla bene */
 .ai-btn-subtle .ai-spotlight {
@@ -248,9 +251,8 @@ body {
     transparent 80%
   );
 }
-.ai-btn:hover {
-  animation: ai-gradient-flow 2.4s ease-in-out infinite;
-}
+/* Gradient flow rimosso — il bottone resta statico in hover (solo lo shimmer
+   sweep + sparkle twinkle restano per un feedback visivo minimo). */
 /* Shimmer luminoso che attraversa il bottone in hover (solo variant default solid) */
 .ai-btn-default::before {
   content: "";
@@ -288,6 +290,57 @@ body {
   z-index: 1;
   animation: ai-burst-ring 0.7s ease-out forwards;
 }
+
+/* ===== Piggybird Finance — carta stampata ===== */
+/* Override CSS vars dentro il widget così tutti i text-[var(--fg-muted)] /
+   border-[var(--border)] esistenti si tingono nei toni della carta. */
+.newspaper-paper {
+  --fg: #1a1410;
+  --fg-muted: #4a3f30;
+  --fg-subtle: #8a7a5e;
+  --border: #c8b890;
+  background-color: #f1e7cf;
+  color: #1a1410;
+  background-image:
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0.1 0 0 0 0 0.08 0 0 0 0 0.05 0 0 0 0.18 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)' opacity='0.55'/></svg>"),
+    radial-gradient(ellipse at 50% 0%, rgba(255, 248, 220, 0.45) 0%, transparent 60%),
+    radial-gradient(ellipse at 100% 100%, rgba(180, 140, 80, 0.10) 0%, transparent 55%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35), inset 0 -2px 8px rgba(120, 90, 50, 0.12);
+}
+/* Drop cap sulla prima lettera del lead — stile editoriale */
+.newspaper-lead {
+  text-align: justify;
+  hyphens: auto;
+  -webkit-hyphens: auto;
+}
+.newspaper-lead::first-letter {
+  float: left;
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  font-size: 2.3em;
+  line-height: 0.95;
+  padding-top: 0.05em;
+  padding-right: 0.12em;
+  color: #0e0a06;
+}
+/* Headline editoriale: serif default, peso bold, inchiostro scuro */
+.newspaper-headline {
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #0e0a06;
+}
+/* Pull-quote per la nota di attenzione: barra verticale + italic */
+.newspaper-pullquote {
+  border-left: 2px solid #9b3d2c;
+  background: rgba(155, 61, 44, 0.06);
+  color: #6e2a1d;
+  font-style: italic;
+}
+/* Numeri/highlight in colore inchiostro (non orange-400 acceso) */
+.newspaper-paper .newspaper-ink-mark { color: #9b3d2c; }
+/* Footer dateline italic */
+.newspaper-dateline { font-style: italic; }
 
 /* Recharts theming */
 .recharts-cartesian-axis-tick-value { fill: var(--fg-subtle); font-size: 11px; }

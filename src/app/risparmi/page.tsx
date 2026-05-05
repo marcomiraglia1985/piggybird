@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PiggyBank, ArrowUpRight, TrendingUp, Plus, Info } from "lucide-react";
 import { EditSavingsButton } from "@/components/risparmi/edit-savings-dialog";
 import { SavingsCharts } from "@/components/risparmi/savings-charts";
+import { getDisplayBalances } from "@/lib/account-freeze";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,16 @@ export default async function RisparmiPage({
   const PAGE_SIZE = 25;
   const limit = sp.limit ? Math.max(PAGE_SIZE, parseInt(sp.limit, 10)) : PAGE_SIZE;
 
-  const accounts = await prisma.account.findMany({
+  const accountsRaw = await prisma.account.findMany({
     where: { type: "savings", active: true },
     orderBy: { displayOrder: "asc" },
   });
+  // In modalità Live: currentBalance + tx confermate dopo frozenAt → coerente
+  // con /conti. Senza questo, /risparmi resta indietro su nuovi import.
+  const accounts = await getDisplayBalances(accountsRaw);
   const accountIds = accounts.map((a) => a.id);
 
-  const totalSaldo = accounts.reduce((s, a) => s + a.currentBalance, 0);
+  const totalSaldo = accounts.reduce((s, a) => s + a.displayBalance, 0);
 
   const totalCount = accountIds.length
     ? await prisma.transaction.count({ where: { accountId: { in: accountIds } } })
@@ -103,7 +107,7 @@ export default async function RisparmiPage({
     for (const a of accounts) {
       const flows = flowMap.get(a.id) ?? new Map<string, number>();
       const full: { month: string; balance: number }[] = new Array(12);
-      let running = a.currentBalance;
+      let running = a.displayBalance;
       for (let i = 11; i >= 0; i--) {
         full[i] = { month: months[i], balance: running };
         running -= flows.get(months[i]) ?? 0;
@@ -241,10 +245,10 @@ export default async function RisparmiPage({
             // Yield % approssimato: (interessi 365g / saldo medio) — usiamo il saldo
             // attuale come proxy del saldo medio (semplificazione).
             const yieldPct =
-              a.currentBalance > 0 && stats.last365 > 0
-                ? (stats.last365 / a.currentBalance) * 100
+              a.displayBalance > 0 && stats.last365 > 0
+                ? (stats.last365 / a.displayBalance) * 100
                 : null;
-            const capitale = Math.max(0, a.currentBalance - stats.total);
+            const capitale = Math.max(0, a.displayBalance - stats.total);
             const series = seriesByAccount[a.id] ?? [];
             return (
               <Card key={a.id} className="p-0 overflow-hidden">
@@ -269,7 +273,7 @@ export default async function RisparmiPage({
                           />
                         </div>
                         <div className="text-xl font-semibold tabular-nums text-amber-400 mt-0.5">
-                          {formatEUR(a.currentBalance)}
+                          {formatEUR(a.displayBalance)}
                         </div>
                         {a.interestRateAnnual != null && (
                           <div className="text-[10px] text-[var(--color-fg-subtle)] mt-1 inline-flex items-center gap-1">

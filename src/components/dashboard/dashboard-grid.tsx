@@ -22,7 +22,7 @@ import {
   rectSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Columns2, Columns3, Square, X, Plus } from "lucide-react";
+import { GripVertical, Columns2, Columns3, Square, X, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { MasonryGrid } from "./masonry-grid";
 
@@ -76,6 +76,9 @@ export type DashboardCard = {
   minSpan?: number;
   maxSpan?: number;
   removable?: boolean;
+  /** Quando true, il widget è AI-powered: nel modal "Aggiungi widget" viene
+   *  mostrato in una sezione separata con badge ✨. */
+  aiPowered?: boolean;
 };
 
 type Cols = 1 | 2 | 3;
@@ -657,29 +660,62 @@ function AddWidgetsModal({
           </button>
         </div>
 
-        {hiddenCards.length > 0 && (
-          <>
-            <p className="text-xs text-[var(--color-fg-muted)]">
-              Widgets nascosti che puoi rimettere nella dashboard.
-            </p>
-            <div className="space-y-2">
-              {hiddenCards.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    onAdd(c.id);
-                    onClose();
-                  }}
-                  className="w-full flex items-center justify-between gap-2 h-10 px-3 rounded-lg bg-[var(--color-surface-2)] border border-[var(--color-border)] text-sm hover:border-violet-500/40 hover:text-violet-300 transition-colors"
-                >
-                  <span>{c.label}</span>
-                  <Plus className="size-4" />
-                </button>
-              ))}
-            </div>
-          </>
-        )}
+        {hiddenCards.length > 0 && (() => {
+          const sortedAi = hiddenCards
+            .filter((c) => c.aiPowered)
+            .sort((a, b) => a.label.localeCompare(b.label, "it"));
+          const sortedStd = hiddenCards
+            .filter((c) => !c.aiPowered)
+            .sort((a, b) => a.label.localeCompare(b.label, "it"));
+          const renderRow = (c: DashboardCard) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={() => {
+                onAdd(c.id);
+                onClose();
+              }}
+              className={cn(
+                "w-full flex items-center justify-between gap-2 h-10 px-3 rounded-lg border text-sm transition-colors",
+                c.aiPowered
+                  ? "bg-gradient-to-br from-amber-500/[0.06] via-orange-500/[0.08] to-rose-500/[0.06] border-orange-500/30 hover:border-orange-500/60 hover:text-orange-200"
+                  : "bg-[var(--color-surface-2)] border-[var(--color-border)] hover:border-violet-500/40 hover:text-violet-300",
+              )}
+            >
+              <span className="inline-flex items-center gap-1.5">
+                {c.aiPowered && <Sparkles className="size-3 text-orange-400" />}
+                {c.label}
+              </span>
+              <Plus className="size-4" />
+            </button>
+          );
+          return (
+            <>
+              <p className="text-xs text-[var(--color-fg-muted)]">
+                Widgets nascosti che puoi rimettere nella dashboard.
+              </p>
+              {sortedAi.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-[10px] uppercase tracking-widest text-orange-300 font-medium inline-flex items-center gap-1.5">
+                    <Sparkles className="size-3" />
+                    AI Powered
+                  </div>
+                  {sortedAi.map(renderRow)}
+                </div>
+              )}
+              {sortedStd.length > 0 && (
+                <div className="space-y-2">
+                  {sortedAi.length > 0 && (
+                    <div className="text-[10px] uppercase tracking-widest text-[var(--color-fg-subtle)] font-medium pt-1">
+                      Standard
+                    </div>
+                  )}
+                  {sortedStd.map(renderRow)}
+                </div>
+              )}
+            </>
+          );
+        })()}
 
         <div className="rounded-lg border border-dashed border-[var(--color-border)] bg-[var(--color-surface-2)]/40 p-4 text-center">
           <p className="text-xs text-[var(--color-fg-muted)]">

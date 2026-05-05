@@ -36,6 +36,7 @@ import { AnniversaryWidget } from "@/components/dashboard/anniversary-widget";
 import { EstateRoiWidget } from "@/components/dashboard/estate-roi-widget";
 import { CoffeeTrackerWidget } from "@/components/dashboard/coffee-tracker-widget";
 import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
+import { NetWorthInsightsWidget } from "@/components/dashboard/networth-insights-widget";
 import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
 import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
@@ -185,6 +186,15 @@ export default async function Dashboard() {
             defaultSpan: 1,
             minSpan: 1,
             maxSpan: 1,
+          },
+          {
+            id: "networth-insights",
+            label: "Piggybird Finance",
+            node: <NetWorthInsightsWidget key="networth-insights" />,
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+            aiPowered: true,
           },
           {
             id: "top-expenses",

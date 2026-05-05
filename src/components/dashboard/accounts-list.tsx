@@ -12,6 +12,7 @@ type Account = {
   emoji: string | null;
   type: string;
   currentBalance: number;
+  displayBalance: number;
   ownershipShare: number;
   displayOrder?: number;
 };
@@ -55,12 +56,12 @@ export function AccountsList({ accounts }: { accounts: Account[] }) {
         break;
       case "balanceDesc":
         arr.sort(
-          (a, b) => b.currentBalance * b.ownershipShare - a.currentBalance * a.ownershipShare,
+          (a, b) => b.displayBalance * b.ownershipShare - a.displayBalance * a.ownershipShare,
         );
         break;
       case "balanceAsc":
         arr.sort(
-          (a, b) => a.currentBalance * a.ownershipShare - b.currentBalance * b.ownershipShare,
+          (a, b) => a.displayBalance * a.ownershipShare - b.displayBalance * b.ownershipShare,
         );
         break;
       default:
@@ -68,7 +69,7 @@ export function AccountsList({ accounts }: { accounts: Account[] }) {
     }
     return arr;
   }, [accounts, opts.sort]);
-  const totalEffective = sorted.reduce((s, a) => s + a.currentBalance * a.ownershipShare, 0);
+  const totalEffective = sorted.reduce((s, a) => s + a.displayBalance * a.ownershipShare, 0);
   return (
     <Card>
       <CardHeader>
@@ -103,7 +104,7 @@ export function AccountsList({ accounts }: { accounts: Account[] }) {
       <CardContent>
         <ul className="space-y-1">
           {sorted.map((a) => {
-            const effective = a.currentBalance * a.ownershipShare;
+            const effective = a.displayBalance * a.ownershipShare;
             const pct = totalEffective > 0 ? (effective / totalEffective) * 100 : 0;
             const share = shareLabel(a.ownershipShare);
             return (
@@ -133,7 +134,7 @@ export function AccountsList({ accounts }: { accounts: Account[] }) {
                     </div>
                     {share && (
                       <div className="text-[10px] text-[var(--fg-subtle)] tabular-nums">
-                        di {formatEUR(a.currentBalance, { compact: true })}
+                        di {formatEUR(a.displayBalance, { compact: true })}
                       </div>
                     )}
                   </div>

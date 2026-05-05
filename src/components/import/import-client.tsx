@@ -11,6 +11,7 @@ import {
   Plus,
   ArrowUpRight,
   Loader2,
+  Tag,
 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast";
@@ -48,6 +49,7 @@ type ParsedRow = {
   rawType?: string;
   suggestedAccount?: string;
   suggestedCategoryEmoji?: string | null;
+  suggestedCategoryName?: string | null;
   duplicateOf?: string | null;
   softDuplicateOf?: SoftDupInfo | null;
   notes?: string | null;
@@ -335,13 +337,41 @@ export function ImportClient() {
   // unendo le righe di tutti i file con l'accountId scelto per ciascuno.
   function confirmPairing() {
     if (!data) return;
-    const catByEmoji = new Map(data.categories.map((c) => [c.emoji, c]));
+    // Più categorie possono condividere lo stesso emoji (es. 💰 → "Interessi"
+    // income + "Metals" investment). Indicizzo come array e disambiguo per
+    // segno della tx: positivo → preferisci type "income", negativo → "expense".
+    const catsByEmoji = new Map<string, Category[]>();
+    for (const c of data.categories) {
+      const arr = catsByEmoji.get(c.emoji) ?? [];
+      arr.push(c);
+      catsByEmoji.set(c.emoji, arr);
+    }
+    function pickCategory(
+      emoji: string | null | undefined,
+      name: string | null | undefined,
+      amount: number,
+    ) {
+      if (!emoji) return null;
+      const matches = catsByEmoji.get(emoji);
+      if (!matches || matches.length === 0) return null;
+      if (matches.length === 1) return matches[0];
+      // 1) Match per nome esatto se il parser l'ha specificato (caso più sicuro)
+      if (name) {
+        const byName = matches.find(
+          (c) => c.name.toLowerCase() === name.toLowerCase(),
+        );
+        if (byName) return byName;
+      }
+      // 2) Disambigua per segno della tx → income/expense type
+      const wanted = amount > 0 ? "income" : "expense";
+      return matches.find((c) => c.type === wanted) ?? matches[0];
+    }
     const allEdits: Editable[] = [];
     for (const file of data.files) {
       const fileAccountId = fileAccounts.get(file.fileName);
       if (!fileAccountId) return; // un file senza conto: blocca
       for (const r of file.rows) {
-        const cat = r.suggestedCategoryEmoji ? catByEmoji.get(r.suggestedCategoryEmoji) : null;
+        const cat = pickCategory(r.suggestedCategoryEmoji, r.suggestedCategoryName, r.amount);
         // forceAccountId vince sul pair stage: usato dai quirk parser-level
         // (es. Revolut Current CSV reindirizza interessi savings al conto deposito).
         const accountId = r.forceAccountId ?? fileAccountId;
@@ -800,7 +830,7 @@ export function ImportClient() {
                     : parseProgress && parseProgress.total > 1
                       ? `${parseProgress.total - parseProgress.current - 1} file ancora da processare.`
                       : "Il formato viene riconosciuto automaticamente."
-                  : "Trascina più file insieme per importarli in un unico passaggio. Banche supportate qui sotto."}
+                  : "Trascina più file insieme per importarli in un unico passaggio. Conti supportati qui sotto."}
               </p>
             </div>
             <label className="cursor-pointer inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-[var(--surface)] border border-[var(--border)] text-sm hover:border-[var(--border-strong)]">
@@ -829,7 +859,7 @@ export function ImportClient() {
 
         <div className="space-y-2">
           <p className="text-[11px] uppercase tracking-wider text-[var(--fg-subtle)] text-center">
-            Banche supportate
+            Conti supportati
           </p>
           <div className="flex flex-wrap justify-center gap-1.5">
             {SUPPORTED_BANKS.map((b) => (
@@ -1037,7 +1067,7 @@ export function ImportClient() {
                   )}
                   <th className="px-3 py-3 font-medium">Descrizione</th>
                   <th className="px-3 py-3 font-medium">Conto</th>
-                  <th className="px-3 py-3 font-medium">Categoria</th>
+                  <th className="px-3 py-3 font-medium">Categoria suggerita</th>
                   <th className="px-3 py-3 font-medium text-right">Importo</th>
                 </tr>
               </thead>
@@ -1141,10 +1171,10 @@ export function ImportClient() {
                         <div className="inline-flex items-center gap-1.5">
                           {e.suggestedCategoryEmoji && (
                             <span
-                              title="Categoria auto-rilevata dallo storico"
-                              className="text-violet-400"
+                              title="Categoria suggerita da pattern del parser / storico (no AI)"
+                              className="text-[var(--fg-subtle)]"
                             >
-                              <Sparkles className="size-3" />
+                              <Tag className="size-3" />
                             </span>
                           )}
                           <CategoryPicker

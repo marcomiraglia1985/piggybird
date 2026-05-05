@@ -9,6 +9,11 @@ export type ParsedRow = {
   suggestedAccount?: string;
   /** Pre-suggested category emoji */
   suggestedCategoryEmoji?: string | null;
+  /** Pre-suggested category NAME — usato quando il parser ha pattern-match
+   *  deterministico ed è sicuro della categoria (es. Revolut Savings
+   *  riconosce "Interessi netti" → "Interessi"). Disambigua il caso di
+   *  emoji condiviso da più categorie. Se assente si usa solo l'emoji. */
+  suggestedCategoryName?: string | null;
   /** Whether this row likely matches an existing transaction in DB */
   duplicateOf?: string | null;
   /** Soft match: stessa data+amount+accountId ma description diversa.
