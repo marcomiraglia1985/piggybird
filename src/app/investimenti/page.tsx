@@ -14,6 +14,8 @@ import {
   InvestmentsChartSkeleton,
 } from "./_chart-async";
 import { getCredentialStatus } from "@/lib/credentials";
+import { InvestmentCommentarySection } from "@/components/investimenti/investment-commentary-section";
+import { getPersonalityProfile } from "@/lib/personality";
 
 export const dynamic = "force-dynamic";
 
@@ -31,10 +33,11 @@ export default async function InvestimentiPage() {
   // history rimossa dal Promise.all: era la slow op (5-10s di fetch live
   // Yahoo + Binance). Spostata in <Suspense> sotto così il resto della
   // pagina appare subito.
-  const [dataState, binanceCred, revolutXCred] = await Promise.all([
+  const [dataState, binanceCred, revolutXCred, personalityProfile] = await Promise.all([
     hasInvestmentData(),
     getCredentialStatus("binance"),
     getCredentialStatus("revolut-x"),
+    getPersonalityProfile(),
   ]);
 
   // Sync target abilitati: solo le integrazioni davvero connesse + il refresh
@@ -356,6 +359,12 @@ export default async function InvestimentiPage() {
         Cost basis FIFO da CSV broker importati · Conversioni FX a tassi ECB.
         Sync tutto = lancia in parallelo tutti i provider connessi.
       </div>
+
+      {!isEmpty && (
+        <InvestmentCommentarySection
+          personalityCompleted={personalityProfile.completed}
+        />
+      )}
     </div>
   );
 }

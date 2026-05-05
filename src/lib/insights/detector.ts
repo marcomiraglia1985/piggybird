@@ -1,5 +1,7 @@
 import { prisma } from "../prisma";
 import { getDisplayBalances } from "../account-freeze";
+import { getUserProfile } from "../user-profile";
+import { getPersonalityProfile } from "../personality";
 import { fetchMacroContext, type MacroContext } from "./macro";
 
 /**
@@ -107,6 +109,40 @@ export type IssueInput = {
 
   // === Memoria: ultimi 2-3 numeri pubblicati per evitare ripetizioni ===
   lastIssues: Array<{ monthLabel: string; headline: string; lead: string }>;
+
+  // === Profilo utente (campi non-null) — context, mai usato come "tu/Marco" ===
+  userContext: {
+    ageYears: number | null;
+    countries: string[];
+    trackingYearsActual: number | null;
+    goals: string[];
+    retirementAgeRange: string | null;
+    riskTolerance: string | null;
+    familyStatus: string | null;
+    childrenCount: string | null;
+    profession: string | null;
+    housingType: string | null;
+  };
+
+  // === Personality test layers (se completato) — psico-finanziario ===
+  personalityLayers: {
+    archetype: { id: string; name: string; bird: string; tagline: string } | null;
+    axes: {
+      planning: number;
+      risk: number;
+      time: number;
+      value: number;
+      social: number;
+    } | null;
+    moneyScripts: {
+      avoidance: number;
+      worship: number;
+      status: number;
+      vigilance: number;
+    } | null;
+    behavioral: { lossAversion: number; composure: number } | null;
+    literacyScore: number | null;
+  } | null;
 };
 
 export async function buildIssueInput(): Promise<IssueInput | null> {
@@ -514,6 +550,49 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
   // === Memory: ultimi 2 numeri pubblicati ===
   const lastIssues = await loadLastIssues(targetYear, targetMonth);
 
+  // === Profilo utente: campi non-null come context narrativo ===
+  const profile = await getUserProfile().catch(() => null);
+  const ageYears =
+    profile?.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(profile.birthDate)
+      ? Math.max(0, Math.floor(
+          (now.getTime() - new Date(profile.birthDate).getTime()) /
+            (365.25 * 86_400_000),
+        ))
+      : null;
+  const trackingYearsActual = sorted.length > 0
+    ? +(((now.getTime() - sorted[0].month.getTime()) / (365.25 * 86_400_000)).toFixed(1))
+    : null;
+  const userContext = {
+    ageYears,
+    countries: profile?.countries ?? [],
+    trackingYearsActual,
+    goals: profile?.goals ?? [],
+    retirementAgeRange: profile?.retirementAge || null,
+    riskTolerance: profile?.riskTolerance || null,
+    familyStatus: profile?.familyStatus || null,
+    childrenCount: profile?.childrenCount || null,
+    profession: profile?.profession || null,
+    housingType: profile?.housingType || null,
+  };
+
+  // === Personality layers — psico-finanziario, attinge cross-feature ===
+  const personality = await getPersonalityProfile().catch(() => null);
+  const personalityLayers =
+    personality?.completed && personality.archetype && personality.axes
+      ? {
+          archetype: {
+            id: personality.archetype.id,
+            name: personality.archetype.name,
+            bird: personality.archetype.bird,
+            tagline: personality.archetype.tagline,
+          },
+          axes: personality.axes,
+          moneyScripts: personality.moneyScripts ?? null,
+          behavioral: personality.behavioral ?? null,
+          literacyScore: personality.literacyScore,
+        }
+      : null;
+
   return {
     monthLabel,
     monthIsClosed,
@@ -542,6 +621,8 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
     macro,
     lens,
     lastIssues,
+    userContext,
+    personalityLayers,
   };
 }
 

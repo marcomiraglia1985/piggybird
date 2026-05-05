@@ -10,11 +10,24 @@ import {
 
 export const runtime = "nodejs";
 
+/** Limite dimensione file CSV/XLSX upload. 50MB copre estratti pluri-anno
+ *  delle banche più grosse senza esaurire memoria su Tauri sidecar. */
+const MAX_UPLOAD_BYTES = 50 * 1024 * 1024;
+
 export async function POST(req: NextRequest) {
   const form = await req.formData();
   const file = form.get("file");
   if (!file || typeof file === "string") {
     return NextResponse.json({ error: "Nessun file" }, { status: 400 });
+  }
+  const fileSize = (file as File).size ?? 0;
+  if (fileSize > MAX_UPLOAD_BYTES) {
+    return NextResponse.json(
+      {
+        error: `File troppo grande (${(fileSize / 1024 / 1024).toFixed(1)}MB). Massimo ${MAX_UPLOAD_BYTES / 1024 / 1024}MB. Spezza il CSV per anno se più voluminoso.`,
+      },
+      { status: 413 },
+    );
   }
 
   // Seed + sync fire-and-forget: non blocca la response. Il template di

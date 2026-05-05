@@ -99,14 +99,30 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
 
 export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: string }> }) {
   const { id } = await ctx.params;
+  // Recupera mortgageRecurrenceGroupId PRIMA del soft-delete: serve per
+  // ripulire le tx ricorrenti del mutuo che altrimenti restano orfane.
+  const estate = await prisma.realEstate.findUnique({
+    where: { id },
+    select: { mortgageRecurrenceGroupId: true },
+  });
   // Soft delete: scollega le transazioni e marca come inactive
   await prisma.transaction.updateMany({
     where: { estateId: id },
     data: { estateId: null },
   });
+  // Cancella le tx future ricorrenti del mutuo (confirmed=false). Le tx già
+  // confermate (rate pagate) restano come storico ma scollegate dall'estate.
+  if (estate?.mortgageRecurrenceGroupId) {
+    await prisma.transaction.deleteMany({
+      where: {
+        recurrenceGroupId: estate.mortgageRecurrenceGroupId,
+        confirmed: false,
+      },
+    });
+  }
   await prisma.realEstate.update({
     where: { id },
-    data: { active: false },
+    data: { active: false, mortgageRecurrenceGroupId: null },
   });
   return NextResponse.json({ ok: true });
 }

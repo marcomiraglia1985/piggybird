@@ -1,7 +1,7 @@
 import { Info } from "lucide-react";
 
 /**
- * Disclaimer obbligatorio sotto ogni output di Moneybird Insights.
+ * Disclaimer obbligatorio sotto ogni output di Piggybird Insights.
  *
  * Posizionamento legale: tiene la feature fuori dalla definizione MiFID II di
  * "investment advice" (Art. 4(1)(4)) — recommendation specifica su strumenti
@@ -13,7 +13,7 @@ import { Info } from "lucide-react";
  * è il meccanismo di safe-harbor.
  */
 export const AI_DISCLAIMER =
-  "Moneybird Insights non fornisce consulenza finanziaria. Le osservazioni sono educative e basate sui tuoi dati locali — per decisioni di investimento consulta un consulente abilitato.";
+  "Piggybird Insights non fornisce consulenza finanziaria. Le osservazioni sono educative e basate sui tuoi dati locali — per decisioni di investimento consulta un consulente abilitato.";
 
 export function AiDisclaimer({ className }: { className?: string }) {
   return (

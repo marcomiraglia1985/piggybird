@@ -33,6 +33,7 @@ export function computeIRR(
   if (!hasIn || !hasOut) return null;
 
   let rate = guess;
+  let lastNpv = Infinity;
   for (let iter = 0; iter < 100; iter++) {
     let npv = 0;
     let dnpv = 0;
@@ -42,6 +43,7 @@ export function computeIRR(
       npv += amounts[i] / factor;
       if (t > 0) dnpv -= (t * amounts[i]) / (factor * (1 + rate));
     }
+    lastNpv = npv;
     if (Math.abs(dnpv) < 1e-12) break;
     const newRate = rate - npv / dnpv;
     if (!isFinite(newRate)) return null;
@@ -49,5 +51,9 @@ export function computeIRR(
     // Clamp per evitare divergenza in iterazioni intermedie
     rate = Math.max(-0.99, Math.min(10, newRate));
   }
+  // Sanity check: dopo 100 iter senza convergenza, se NPV è ancora lontano da 0
+  // o rate è ai bordi del clamp, l'IRR non è affidabile (es. portfolio con
+  // troppo pochi flussi o senza cambio di segno) — meglio null.
+  if (Math.abs(lastNpv) > 1 || rate <= -0.98 || rate >= 9.99) return null;
   return rate;
 }

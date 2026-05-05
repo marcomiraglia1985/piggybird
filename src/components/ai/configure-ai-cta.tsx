@@ -7,7 +7,7 @@ import { cn } from "@/lib/utils";
  * Impostazioni → Funzioni AI con tooltip esplicito.
  */
 export function ConfigureAiCta({
-  title = "Configura la tua Claude API key in Impostazioni → Funzioni AI",
+  title = "Configura la tua API key in Impostazioni → Funzioni AI",
   className,
 }: {
   title?: string;

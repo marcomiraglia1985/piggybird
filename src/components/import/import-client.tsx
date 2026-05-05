@@ -1490,7 +1490,7 @@ function AiReviewBanner({
   const disabled = !aiConfigured || aiLoading || rowCount === 0;
   const tooltip =
     aiConfigured === false
-      ? "Configura la tua Claude API key in Impostazioni → Funzioni AI"
+      ? "Configura la tua API key in Impostazioni → Funzioni AI"
       : aiConfigured === null
         ? "Verifica configurazione AI…"
         : rowCount === 0

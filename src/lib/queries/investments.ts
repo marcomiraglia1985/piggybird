@@ -135,7 +135,10 @@ export async function getInvestmentsGain() {
   let investmentLevelCost = 0;
   let investmentLevelValue = 0;
   for (const inv of investments) {
-    if (inv.costEur == null) continue;
+    // Coerente con line 58: salta sia null sia ≤0 (cost basis invalido).
+    // Senza il check ≤0, un Investment con costEur=0 (corruzione DB o
+    // utente che ha azzerato manualmente) inquinerebbe il totale di gain.
+    if (inv.costEur == null || inv.costEur <= 0) continue;
     const hasCryptoBreakdown =
       inv.type === "crypto" &&
       cryptoCostBases.some((c) => c.platform === inv.platform);

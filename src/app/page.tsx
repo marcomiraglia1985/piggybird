@@ -37,6 +37,8 @@ import { EstateRoiWidget } from "@/components/dashboard/estate-roi-widget";
 import { CoffeeTrackerWidget } from "@/components/dashboard/coffee-tracker-widget";
 import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
 import { NetWorthInsightsWidget } from "@/components/dashboard/networth-insights-widget";
+import { PersonalityCardWidget } from "@/components/dashboard/personality-card-widget";
+import { getPersonalityProfile } from "@/lib/personality";
 import { WorldClocksWidget } from "@/components/dashboard/world-clocks-widget";
 import { WorldDayNightWidget } from "@/components/dashboard/world-daynight-widget";
 import { DashboardShell } from "@/components/dashboard/dashboard-shell";
@@ -100,6 +102,8 @@ export default async function Dashboard() {
     getWorldLandPath(),
     getFxStalenessReport(),
   ]);
+
+  const personalityProfile = await getPersonalityProfile();
 
   // Lifetime stats prende il NW attuale (per Δ vs primo snapshot), quindi va
   // dopo il Promise.all che risolve `current`. Query interne sono leggere.
@@ -196,6 +200,28 @@ export default async function Dashboard() {
             maxSpan: 1,
             aiPowered: true,
           },
+          // Mostrato SOLO se il test non è stato ancora completato — funge da
+          // CTA onboarding. Una volta fatto il test i layer alimentano altre
+          // feature AI (Piggybird Finance), il widget dashboard non serve più
+          // come display fine a sé stesso.
+          ...(personalityProfile.completed
+            ? []
+            : [
+                {
+                  id: "personality-card",
+                  label: "Profilo Money",
+                  node: (
+                    <PersonalityCardWidget
+                      key="personality-card"
+                      profile={personalityProfile}
+                    />
+                  ),
+                  defaultSpan: 1,
+                  minSpan: 1,
+                  maxSpan: 1,
+                  aiPowered: true,
+                },
+              ]),
           {
             id: "top-expenses",
             label: "Top spese",

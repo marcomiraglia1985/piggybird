@@ -5,6 +5,7 @@ import {
   savePersonalityResult,
   resetPersonality,
 } from "@/lib/personality";
+import { prisma } from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
@@ -60,10 +61,28 @@ export async function POST(req: NextRequest) {
     behavioral,
     vision,
   });
+  // Invalida cache di feature AI che attingono ai personality layers: il
+  // nuovo profilo modula l'interpretazione, le edizioni cachate restano
+  // basate sull'archetype vecchio.
+  await invalidatePersonalityDependentCaches();
   return NextResponse.json({ ok: true, archetype });
 }
 
 export async function DELETE() {
   await resetPersonality();
+  await invalidatePersonalityDependentCaches();
   return NextResponse.json({ ok: true });
+}
+
+async function invalidatePersonalityDependentCaches(): Promise<void> {
+  // Setting che usano personalityLayers nel prompt AI → vanno rigenerati
+  // per riflettere il nuovo profilo. Caller lo vedrà come "ancora in bozza".
+  await prisma.setting.deleteMany({
+    where: {
+      OR: [
+        { key: { startsWith: "insights.networth." } },
+        { key: { equals: "investments.commentary" } },
+      ],
+    },
+  });
 }

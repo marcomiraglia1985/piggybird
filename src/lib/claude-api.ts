@@ -40,6 +40,10 @@ export type ClaudeCallOptions = {
    *  tono e l'angolo. NON usare per task narrowly funzionali (es. parsing
    *  CSV, mapping colonne) dove il context aggiunge solo token sprecati. */
   includeUserContext?: boolean;
+  /** Tool definitions passate al messages.create. Usato per server-side tools
+   *  Anthropic-managed come web_search (type "web_search_20250305") — niente
+   *  loop tool_use→tool_result lato app, Anthropic gestisce internamente. */
+  tools?: unknown[];
 };
 
 export type ClaudeCallResult = {
@@ -49,6 +53,10 @@ export type ClaudeCallResult = {
   costEur: number;
   model: AIModelId;
 };
+
+/** Sentinel string per distinguere "credential decifrabile" da "credential
+ *  presente ma corrotta". Caller riconosce e mostra messaggio user-friendly. */
+const DECRYPT_FAILED_MARKER = "__DECRYPT_FAILED__";
 
 async function getApiKey(): Promise<string | null> {
   const cred = await prisma.apiCredential.findUnique({
@@ -62,7 +70,9 @@ async function getApiKey(): Promise<string | null> {
       authTag: cred.authTag,
     });
   } catch {
-    return null;
+    // Credential ESISTE ma decrypt fallisce (master key cambiata, DB
+    // corrotto). Distinguiamo da "no credential" per messaggio user-friendly.
+    return DECRYPT_FAILED_MARKER;
   }
 }
 
@@ -193,6 +203,11 @@ export async function callClaude(
 ): Promise<ClaudeCallResult> {
   checkRateLimit();
   const apiKey = await getApiKey();
+  if (apiKey === DECRYPT_FAILED_MARKER) {
+    throw new Error(
+      "API key Anthropic salvata ma non decifrabile. Re-inseriscila in Impostazioni → Funzioni AI.",
+    );
+  }
   if (!apiKey) {
     throw new Error("Nessuna API key Anthropic configurata.");
   }
@@ -226,7 +241,8 @@ export async function callClaude(
       max_tokens: opts.maxTokens ?? 1024,
       system: systemPrompt,
       messages: opts.messages,
-    });
+      ...(opts.tools && opts.tools.length > 0 ? { tools: opts.tools } : {}),
+    } as Parameters<typeof client.messages.create>[0]);
     const text = resp.content
       .filter((c) => c.type === "text")
       .map((c) => (c as { text: string }).text)

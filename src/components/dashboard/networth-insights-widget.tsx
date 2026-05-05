@@ -110,11 +110,11 @@ export function NetWorthInsightsWidget() {
               stile giornalistico cosa è successo ai tuoi numeri questo mese.
             </p>
             <p>
-              Esce <strong>una volta al mese</strong> (cached fino al numero
-              successivo). I dati sono pre-calcolati: net worth, savings rate,
-              top spese, allocation, posizioni di trading, anomalie. Claude
-              Sonnet sceglie quale storia raccontare e la formula in tono
-              semi-serio — Bloomberg meets NYT.
+              Esce <strong>una volta al mese</strong>. I dati sono pre-calcolati
+              localmente: net worth, savings rate, top spese, allocation,
+              posizioni di trading, anomalie. La redazione AI sceglie quale
+              storia raccontare e la formula in tono semi-serio — Bloomberg
+              meets NYT.
             </p>
             <p className="text-[var(--fg-subtle)]">
               Se siamo prima del giorno 15 il numero copre il mese precedente
@@ -161,8 +161,8 @@ export function NetWorthInsightsWidget() {
         <div className="p-5 space-y-3">
           <Masthead monthLabel={monthLabel ?? "—"} />
           <p className="text-xs text-[var(--fg-muted)] leading-relaxed">
-            Configura la tua Anthropic API key per ricevere il numero mensile
-            di Piggybird Finance: un editoriale AI sui tuoi numeri.
+            Configura la tua API key in Impostazioni → Funzioni AI per ricevere
+            il numero mensile di Piggybird Finance: un editoriale sui tuoi numeri.
           </p>
           <ConfigureAiCta />
         </div>

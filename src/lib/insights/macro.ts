@@ -26,25 +26,38 @@ export type MacroContext = {
   eurUsd1mChangePct: number | null; // delta % vs 30gg fa (positivo = EUR si rafforza)
   sp500_1mChangePct: number | null; // ^GSPC ultimo mese
   btc_1mChangePct: number | null; // BTC-USD ultimo mese
+  // Estensione per Investment Commentary (opzionali — fetched solo se richiesti):
+  vix_current: number | null; // ^VIX livello attuale (>25 stress, <15 calma)
+  msciWorld_1mChangePct: number | null; // URTH ETF (proxy MSCI World) ultimo mese
+  treasury10y_currentPct: number | null; // ^TNX yield 10y treasury USA
+  gold_1mChangePct: number | null; // GC=F gold futures ultimo mese
 };
 
 type MacroOpts = {
   wantsFx: boolean;
   wantsStocks: boolean;
   wantsCrypto: boolean;
+  /** Se true, fetcha anche VIX/MSCI World/Treasury 10y/Gold per analisi
+   *  portfolio (Investment Commentary). PF normale lascia false. */
+  wantsExtended?: boolean;
 };
 
 export async function fetchMacroContext(opts: MacroOpts): Promise<MacroContext> {
+  const ext = !!opts.wantsExtended;
   const tasks: Promise<unknown>[] = [
     fetchEcbDepositRate(),
     fetchEurozoneInflation(),
     opts.wantsFx ? fetchEurUsdHistory() : Promise.resolve(null),
     opts.wantsStocks ? fetch1mChange("^GSPC") : Promise.resolve(null),
     opts.wantsCrypto ? fetch1mChange("BTC-USD") : Promise.resolve(null),
+    ext ? fetchSpot("^VIX") : Promise.resolve(null),
+    ext ? fetch1mChange("URTH") : Promise.resolve(null),
+    ext ? fetchSpot("^TNX") : Promise.resolve(null),
+    ext ? fetch1mChange("GC=F") : Promise.resolve(null),
   ];
-  const [ecbRate, inflation, eurUsd, sp500, btc] = (await Promise.allSettled(tasks)).map(
-    (r) => (r.status === "fulfilled" ? r.value : null),
-  );
+  const [ecbRate, inflation, eurUsd, sp500, btc, vix, msci, t10y, gold] = (
+    await Promise.allSettled(tasks)
+  ).map((r) => (r.status === "fulfilled" ? r.value : null));
 
   const eurUsdData = eurUsd as { spot: number; pct1m: number } | null;
   return {
@@ -54,7 +67,26 @@ export async function fetchMacroContext(opts: MacroOpts): Promise<MacroContext> 
     eurUsd1mChangePct: eurUsdData?.pct1m ?? null,
     sp500_1mChangePct: typeof sp500 === "number" ? sp500 : null,
     btc_1mChangePct: typeof btc === "number" ? btc : null,
+    vix_current: typeof vix === "number" ? vix : null,
+    msciWorld_1mChangePct: typeof msci === "number" ? msci : null,
+    treasury10y_currentPct: typeof t10y === "number" ? t10y : null,
+    gold_1mChangePct: typeof gold === "number" ? gold : null,
   };
+}
+
+/** Spot value (current price/yield) via Yahoo, no history. */
+async function fetchSpot(symbol: string): Promise<number | null> {
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+  const res = await fetchWithTimeout(url, {
+    headers: { "User-Agent": "Mozilla/5.0 (compatible; FinanzaPersonale/1.0)" },
+    cache: "no-store",
+  });
+  if (!res.ok) return null;
+  const data = (await res.json()) as {
+    chart?: { result?: Array<{ meta: { regularMarketPrice: number } }> };
+  };
+  const px = data.chart?.result?.[0]?.meta?.regularMarketPrice;
+  return typeof px === "number" ? px : null;
 }
 
 /** ECB Deposit Facility Rate via SDMX JSON (free, no key). */

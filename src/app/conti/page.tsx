@@ -82,62 +82,71 @@ export default async function ContiPage() {
   const apiCreds = await prisma.apiCredential.findMany({ select: { provider: true } });
   const apiActiveProviders = new Set(apiCreds.map((c) => c.provider));
 
-  // Per ogni Account type=investment deriviamo il "subtype" (stocks/crypto/metals)
-  // matchando con la corrispondente Investment row (per platform). Universal-app:
-  // funziona finché l'utente nomina l'Account in modo riconoscibile o ha un
-  // provider linkato a una platform. Fallback: stocks per generic.
-  function inferInvestmentSubtype(account: { name: string; provider: string }): string | null {
-    // Prova match per provider
-    if (account.provider === "binance") return "crypto";
-    if (account.provider === "revolut-x") return "crypto";
-    // Match per nome contiene la platform di un Investment
-    for (const inv of investments) {
-      if (
-        account.name.toLowerCase().includes(inv.platform.toLowerCase()) ||
-        inv.name.toLowerCase().includes(account.name.toLowerCase())
-      ) {
-        return inv.type;
-      }
+  // Routing investment universale: provider-first (stabile vs rename Account),
+  // poi fallback name-match per provider="generic" (Revolut Trading, Fineco,
+  // broker custom). Niente hard-code di nomi specifici nel routing.
+  function findInvestmentForAccount(account: {
+    name: string;
+    provider: string;
+  }): (typeof investments)[number] | null {
+    // Provider-based match: stabile anche se l'utente rinomina l'Account
+    if (account.provider === "binance") {
+      return (
+        investments.find(
+          (i) => i.type === "crypto" && i.platform.toLowerCase().includes("binance"),
+        ) ?? null
+      );
     }
-    return null;
+    if (account.provider === "revolut-x") {
+      return (
+        investments.find((i) => i.type === "crypto" && /revolut.*x/i.test(i.platform)) ??
+        null
+      );
+    }
+    // Generic provider: match per nome (Account.name = Investment.name di default)
+    return (
+      investments.find(
+        (i) =>
+          i.name === account.name ||
+          i.platform.toLowerCase() === account.name.toLowerCase(),
+      ) ?? null
+    );
   }
 
-  // Per type=investment "movimenti" = BUY/SELL trades (StockTrade/CryptoTrade
-  // matched per platform tramite la Investment row paired). I Transaction
-  // records sui conti investment sono solo deposit/withdraw verso il broker e
-  // non interessano il count del broker (sono cash flow gestiti altrove).
-  // Per i conti non-investment usiamo il classico count Transaction.
-  function combinedTxCount(account: { id: string; name: string; type: string }): number {
+  // Subtype dell'Account investment (stocks/crypto/metals/etf).
+  function inferInvestmentSubtype(account: { name: string; provider: string }): string | null {
+    if (account.provider === "binance" || account.provider === "revolut-x") return "crypto";
+    return findInvestmentForAccount(account)?.type ?? null;
+  }
+
+  // Conteggio trade per account investment (BUY/SELL stockTrade + cryptoTrade).
+  // I Transaction records sui conti investment sono solo deposit/withdraw
+  // verso il broker, non vengono contati come "movimenti del broker".
+  function combinedTxCount(account: { id: string; name: string; type: string; provider: string }): number {
     if (account.type !== "investment") return txCountByAccount[account.id] ?? 0;
-    const inv = investments.find((i) => i.name === account.name);
+    const inv = findInvestmentForAccount(account);
     if (!inv) return 0;
     const cryptoCount = cryptoTradesByPlatMap.get(inv.platform) ?? 0;
     const stockCount = stockTradesByPlatMap.get(inv.platform) ?? 0;
     return cryptoCount + stockCount;
   }
 
-  // Per i conti investment il link "movimenti →" punta alla pagina di dettaglio
-  // /investimenti/<broker> dove sono visibili i trade. Match per
-  // Account.provider (binance/revolut-x) + heuristic per Revolut Trading
-  // stocks (provider="generic", riconosciuto dal nome). Universal-app:
-  // funziona con qualsiasi nome scelto dall'utente.
+  // Link "movimenti →" per conti investment. Routing per inv.type → URL
+  // dedicato. Disambiguazione crypto: Binance vs Revolut-X via provider.
   function investmentDetailHref(account: {
     name: string;
     type: string;
     provider: string;
   }): string | null {
     if (account.type !== "investment") return null;
-    const inv = investments.find((i) => i.name === account.name);
+    const inv = findInvestmentForAccount(account);
     if (!inv) return null;
-    if (account.provider === "binance" && inv.type === "crypto") return "/investimenti/crypto";
-    if (account.provider === "revolut-x" && inv.type === "crypto") return "/investimenti/crypto-revolut";
-    if (
-      inv.type === "stocks" &&
-      /revolut/i.test(account.name) &&
-      !/\bX\b/i.test(account.name)
-    ) {
-      return "/investimenti/stocks";
+    if (inv.type === "crypto") {
+      return account.provider === "revolut-x"
+        ? "/investimenti/crypto-revolut"
+        : "/investimenti/crypto";
     }
+    if (inv.type === "stocks") return "/investimenti/stocks";
     return null;
   }
 

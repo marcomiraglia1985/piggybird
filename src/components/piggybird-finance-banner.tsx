@@ -6,6 +6,7 @@ import {
   dismissKey,
   monthLabel,
   NOTIFY_SETTING_KEY,
+  NOTIFY_DISMISSED_KEY_PREFIX,
 } from "@/lib/piggybird-finance";
 import { PiggybirdFinanceBannerDismiss } from "./piggybird-finance-banner-dismiss";
 
@@ -34,6 +35,10 @@ export async function PiggybirdFinanceBanner() {
     prisma.setting.findUnique({ where: { key: monthKey() } }),
     prisma.setting.findUnique({ where: { key: dismissKey() } }),
   ]);
+
+  // Cleanup dismiss keys >12 mesi: si accumulano una al mese forever, dopo
+  // 5 anni sono 60 row inutili. Fire-and-forget, non blocca render.
+  void cleanupOldDismissals();
 
   if (notify?.value !== "true") return null;
   if (!cred) return null;
@@ -76,4 +81,27 @@ export async function PiggybirdFinanceBanner() {
       </div>
     </div>
   );
+}
+
+/**
+ * Cancella le Setting `pf-notify-dismissed.YYYY-MM` più vecchie di 12 mesi.
+ * Si accumulerebbero una al mese forever per ogni utente che usa il toggle;
+ * non sono dati critici una volta passato il mese a cui si riferiscono.
+ */
+async function cleanupOldDismissals(): Promise<void> {
+  try {
+    const now = new Date();
+    const cutoff = new Date(now.getFullYear() - 1, now.getMonth(), 1);
+    const cutoffKey = `${NOTIFY_DISMISSED_KEY_PREFIX}${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}`;
+    await prisma.setting.deleteMany({
+      where: {
+        key: {
+          startsWith: NOTIFY_DISMISSED_KEY_PREFIX,
+          lt: cutoffKey,
+        },
+      },
+    });
+  } catch {
+    // Best-effort; non blocchiamo render
+  }
 }

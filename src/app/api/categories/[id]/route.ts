@@ -88,5 +88,16 @@ export async function DELETE(_req: NextRequest, ctx: { params: Promise<{ id: str
   }
   const orphaned = await prisma.transaction.count({ where: { categoryId: id } });
   await prisma.category.delete({ where: { id } });
+  // Invalida cache AI insights: editorial Piggybird Finance e Investment
+  // Commentary aggregano per categoria — se la cancello, la cached versione
+  // continua a citare un nome categoria che non esiste più.
+  await prisma.setting.deleteMany({
+    where: {
+      OR: [
+        { key: { startsWith: "insights.networth." } },
+        { key: { equals: "investments.commentary" } },
+      ],
+    },
+  });
   return NextResponse.json({ deleted: id, orphanedTransactions: orphaned });
 }

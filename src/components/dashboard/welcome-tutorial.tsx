@@ -62,7 +62,7 @@ const STEPS: Step[] = [
     kind: "tooltip",
     target: "impostazioni",
     title: "Impostazioni",
-    body: "Prima di iniziare ti suggeriamo di prenderti 5 minuti per regolare il tuo profilo e — perché no — fare il nostro test di personalità finanziaria per scoprire il tuo archetipo da risparmiatore. Il tuo profilo sarà utilissimo quando attiveremo Moneybird Insights — osservazioni educative e personalizzate sui tuoi dati locali. Grazie per aver scelto di volare con Piggybird!",
+    body: "Prima di iniziare ti suggeriamo di prenderti 5 minuti per regolare il tuo profilo e — perché no — fare il nostro test di personalità finanziaria per scoprire il tuo archetipo da risparmiatore. Il tuo profilo sarà utilissimo quando attiveremo Piggybird Insights — osservazioni educative e personalizzate sui tuoi dati locali. Grazie per aver scelto di volare con Piggybird!",
   },
 ];
 

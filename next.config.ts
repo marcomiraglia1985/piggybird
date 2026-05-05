@@ -56,10 +56,16 @@ const nextConfig: NextConfig = {
 
 // Sentry wrap: minima config per beta. Niente upload source maps (richiede
 // SENTRY_AUTH_TOKEN che possiamo aggiungere quando faremo build production).
+//
+// Source maps: disabilitati in production (Tauri bundle distribuito).
+// In dev restano ON per stack trace leggibili. La var NEXT_PUBLIC_BUILD_ENV
+// non esiste — Sentry plugin si basa su NODE_ENV: in `next dev` è
+// "development", in `next build` è "production" → la condizione vale al
+// momento della build dei chunks JS/Tauri.
 export default withSentryConfig(nextConfig, {
   silent: true, // niente log Sentry durante build
   tunnelRoute: "/monitoring", // proxy Sentry events via la nostra origin per
   // bypassare ad-blocker che bloccano *.sentry.io
-  sourcemaps: { disable: false }, // teniamo source maps per debug crash
+  sourcemaps: { disable: process.env.NODE_ENV === "production" },
   disableLogger: true,
 });

@@ -76,6 +76,37 @@ S&P vs best stock, EUR/USD vs FX exposure), tessilo nella narrazione in modo
 NATURALE — non come elenco. Mai inventare numeri macro: usa solo quelli del
 payload. Se un macro è null (non disponibile / non rilevante), ignoralo.
 
+USER CONTEXT — nel payload trovi 'userContext' con dati profilo: età, paesi,
+anni di tracking, obiettivi, età pensionamento attesa, tolleranza al rischio,
+stato familiare, figli, professione, tipo abitazione. SONO CONTEXT, non
+soggetto della frase. REGOLE STRETTE:
+- Tono SEMPRE in terza persona impersonale ("il portafoglio", "la spesa
+  Travel"). Mai "tu", mai nome proprio, mai possessivo riferito al lettore.
+- Quando un campo è rilevante ed è valorizzato, usalo come SFONDO che
+  aumenta la profondità (es. "in 7 anni di tracking, prima volta che…",
+  "savings rate al 22% — sopra la media italiana del 8%", "con orizzonte
+  retirement 55-60, il drawdown azionario di gennaio non muove l'ago",
+  "esposizione FX al 38%, bilanciata col profilo aggressive dichiarato").
+- Se un campo è null/empty/[], NON menzionarlo. Niente "non specificato".
+- Mai usare nome/email anche se forniti. Mai indirizzi.
+- Mai fare benchmarking nazionale se countries non è valorizzato.
+
+PERSONALITY LAYERS — nel payload trovi 'personalityLayers' (null se l'utente
+non ha fatto il test). Se presente contiene archetipo + axes (planning/risk/
+time/value/social, scala 1-10) + money scripts (avoidance/worship/status/
+vigilance, 0-100) + behavioral (lossAversion/composure 1-10) + literacy 0-3.
+Sono i tratti psico-finanziari del lettore. REGOLE:
+- USAlo come INQUADRAMENTO INTERPRETATIVO: lo stesso dato finanziario "vale"
+  diverso a seconda del profilo. Es. drawdown -8% vs lossAversion 1/10 →
+  "rumore"; vs lossAversion 9/10 → "soglia di stress".
+- NON dichiarare gli score nel testo (mai "loss aversion 1/10"). Trasla il
+  significato in italiano naturale.
+- NON menzionare l'archetipo per nome (mai "tipico dell'Owl"). L'archetipo è
+  contesto interno, non vocabolario editoriale.
+- Mai consigli su "rivedere il profilo" o "ripetere il test". Sei un giornale,
+  non un coach.
+- Se personalityLayers è null, ignora completamente.
+
 OUTPUT: SOLO JSON puro, niente markdown fence:
 {"headline": "...", "lead": "...", "highlights": ["...", "..."], "watchout": "..." | null}`;
 
@@ -191,6 +222,8 @@ export async function generateMonthlyIssue(
     macro: input.macro,
     lens: input.lens,
     lastIssues: input.lastIssues,
+    userContext: input.userContext,
+    personalityLayers: input.personalityLayers,
   };
 
   const userMessage =
@@ -203,7 +236,7 @@ export async function generateMonthlyIssue(
     model: "sonnet",
     system: SYSTEM_PROMPT,
     messages: [{ role: "user", content: userMessage }],
-    maxTokens: 1500,
+    maxTokens: 2500,
   });
 
   const parsed = parseJsonLoose<{
