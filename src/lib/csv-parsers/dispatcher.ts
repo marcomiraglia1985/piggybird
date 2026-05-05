@@ -36,6 +36,28 @@ export function inspectHeaders(content: string, max = 12): string[] {
 }
 
 /**
+ * Detecta CSV broker (trading) per evitare che vengano processati come bancari.
+ * I trading vanno importati via Impostazioni → Trading import (broker flow),
+ * NON tramite /import (bank flow). Se rileviamo header trading, surface un
+ * errore chiaro che redirige l'utente.
+ */
+function isTradingCsv(headers: string[]): { broker: string; reason: string } | null {
+  // Revolut Trading: header univoco "Total Amount" + "Price per share" + "Ticker"
+  if (
+    headers.includes("Ticker") &&
+    headers.includes("Price per share") &&
+    headers.includes("Total Amount")
+  ) {
+    return {
+      broker: "Revolut Trading",
+      reason: "Carica i CSV di trading da Impostazioni → Importa trade broker (CSV).",
+    };
+  }
+  // Trade Republic, eToro, Trade212 ecc. avrebbero pattern propri — TODO future.
+  return null;
+}
+
+/**
  * Sceglie il parser giusto in base agli header del CSV.
  */
 export function parseAny(content: string): ParserResult {
@@ -43,6 +65,18 @@ export function parseAny(content: string): ParserResult {
   // contamina il primo header impedendo il match dei formati conosciuti.
   if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
   const headers = inspectHeaders(content, 20);
+
+  // Trading CSV su flusso bancario = errore di routing, non parsare a casaccio.
+  const trading = isTradingCsv(headers);
+  if (trading) {
+    return {
+      format: "unknown",
+      rows: [],
+      warnings: [
+        `Riconosciuto come CSV trading ${trading.broker}. ${trading.reason}`,
+      ],
+    };
+  }
 
   if (isRevolut(headers)) {
     return parseRevolutCSV(content);
@@ -91,6 +125,13 @@ export function parseAny(content: string): ParserResult {
 export async function parseAnyWithFallback(content: string): Promise<ParserResult> {
   const result = parseAny(content);
   if (result.format !== "unknown") return result;
+  // CSV trading detected → NON cadere su universal AI fallback (che proverebbe
+  // a parsarlo come bancario). Surface l'errore così il /api/import/parse
+  // ritorna 400 e il client mostra il warning chiaro all'utente.
+  const isTradingHint = result.warnings.some((w) =>
+    w.toLowerCase().includes("csv trading"),
+  );
+  if (isTradingHint) return result;
   // Fallback AI — costa ~3 cents per nuovo formato (one-time, poi cache)
   try {
     return await parseUniversalWithFallback(content);

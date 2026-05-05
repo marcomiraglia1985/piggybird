@@ -247,22 +247,25 @@ export async function getStockIrrInputs() {
 }
 
 /**
- * Storico SPY mensile (adjusted close, total return con dividendi reinvestiti
- * via Yahoo). Usato dal widget S&P Beat per ricalcolare il return da una
- * data start arbitraria (override utente) senza roundtrip server.
+ * Helper generico: storico mensile (adjusted close, total return con dividendi
+ * reinvestiti via Yahoo) di un qualsiasi ticker. Cached 1h via Next fetch.
  *
- * Range: dal 2014 ad oggi (~150 punti, ~5KB JSON).
+ * Usato dal widget S&P Beat per benchmark multipli (SPY index, MDLOX = fondo
+ * attivo Larry Fink, BRK-B = Berkshire Buffett).
  *
- * Nota su FX: rendimento SPY in USD nativi. Il portfolio utente usa lo stesso
- * fxToEur per cost+value, quindi il rapporto value/cost è invariante alla FX.
- * Confronto apples-to-apples per portfolio prevalentemente USD-denominato.
+ * Range: dal 2014 ad oggi (~150 punti, ~5KB JSON per ticker).
+ *
+ * Nota su FX: prezzi in valuta nativa del ticker. Il portfolio utente usa lo
+ * stesso fxToEur per cost+value, quindi il rapporto value/cost è invariante
+ * alla FX se la denominazione coincide. SPY/MDLOX/BRK sono tutti USD →
+ * confronto apples-to-apples per portfolio prevalentemente USD-denominato.
  */
-export async function getSpyMonthlySeries() {
+async function fetchYahooMonthlySeries(ticker: string) {
   const periodStart = Math.floor(
     new Date("2014-01-01T00:00:00Z").getTime() / 1000,
   );
   const periodEnd = Math.floor(Date.now() / 1000);
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/SPY?period1=${periodStart}&period2=${periodEnd}&interval=1mo&events=div%2Csplit`;
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${periodStart}&period2=${periodEnd}&interval=1mo&events=div%2Csplit`;
   try {
     const res = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0 (compatible; Piggybird/1.0)" },
@@ -285,19 +288,24 @@ export async function getSpyMonthlySeries() {
     const ts = r.timestamp ?? [];
     const adj = r.indicators.adjclose?.[0]?.adjclose ?? [];
     const close = r.indicators.quote[0].close;
-    // Preferisci adj close (total return), fallback a close
     const prices = adj.length === ts.length ? adj : close;
     const series: { date: string; price: number }[] = [];
     for (let i = 0; i < ts.length; i++) {
       const p = prices[i];
       if (p == null) continue;
-      series.push({
-        date: new Date(ts[i] * 1000).toISOString(),
-        price: p,
-      });
+      series.push({ date: new Date(ts[i] * 1000).toISOString(), price: p });
     }
     return series.length >= 2 ? series : null;
   } catch {
     return null;
   }
 }
+
+export const getSpyMonthlySeries = () => fetchYahooMonthlySeries("SPY");
+
+/** BlackRock Global Allocation Fund — il flagship attivo di Larry Fink dal 1989. */
+export const getMdloxMonthlySeries = () => fetchYahooMonthlySeries("MDLOX");
+
+/** Berkshire Hathaway Class B — proxy per la performance di Warren Buffett.
+ *  Nota: ticker Yahoo è BRK-B (con dash), NON BRK.B come si trova altrove. */
+export const getBrkbMonthlySeries = () => fetchYahooMonthlySeries("BRK-B");

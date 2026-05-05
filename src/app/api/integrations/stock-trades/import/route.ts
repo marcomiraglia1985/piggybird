@@ -57,15 +57,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
+  // Universal-app: il parser ritorna platform="Revolut" hardcoded, ma vogliamo
+  // che lo storage usi il NOME del conto investimento configurato dall'utente
+  // (es. "Revolut Trading"). Il broker parser ID è ancora utile come source
+  // tag per debug/telemetria.
+  const { getBrokerPlatformName } = await import("@/lib/broker-platform-resolver");
+  const brokerKey =
+    parsed.platform === "Revolut"
+      ? "revolut-stocks"
+      : parsed.platform === "Binance"
+        ? "binance"
+        : parsed.platform === "Revolut X"
+          ? "revolut-x"
+          : null;
+  const platformName = brokerKey
+    ? await getBrokerPlatformName(brokerKey)
+    : parsed.platform;
+
   let inserted = 0;
   let skipped = 0;
 
   for (const ev of parsed.events) {
-    const hash = hashStockEvent(ev);
+    const hash = hashStockEvent({ ...ev, platform: platformName });
     try {
       await prisma.stockTrade.create({
         data: {
-          platform: ev.platform,
+          platform: platformName,
           type: ev.type,
           date: new Date(ev.date),
           ticker: ev.ticker,
@@ -74,7 +91,7 @@ export async function POST(req: NextRequest) {
           amountEur: ev.amountEur,
           currency: ev.currency,
           fxRate: ev.fxRate,
-          source: `${ev.platform.toLowerCase()}-csv-import`,
+          source: `${parsed.platform.toLowerCase()}-csv-import`,
           hash,
         },
       });
@@ -93,7 +110,7 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({
-    platform: parsed.platform,
+    platform: platformName,
     total: parsed.events.length,
     inserted,
     skipped,

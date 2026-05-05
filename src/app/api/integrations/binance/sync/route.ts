@@ -2,15 +2,17 @@ import { NextResponse } from "next/server";
 import { syncBinanceWallet, sourceLabel } from "@/lib/binance";
 import { prisma } from "@/lib/prisma";
 import { markSynced } from "@/lib/credentials";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   try {
     const { totalEur, positions, bySource } = await syncBinanceWallet();
+    const platform = await getBrokerPlatformName("binance");
 
-    // Pulisci e ri-inserisci le posizioni Binance
-    await prisma.cryptoPosition.deleteMany({ where: { platform: "Binance" } });
+    // Pulisci e ri-inserisci le posizioni
+    await prisma.cryptoPosition.deleteMany({ where: { platform } });
     if (positions.length > 0) {
       await prisma.cryptoPosition.createMany({
         data: positions.map((p) => ({
@@ -18,27 +20,34 @@ export async function POST() {
           amount: p.amount,
           eurValue: p.eurValue,
           source: p.source,
-          platform: "Binance",
+          platform,
           pricedVia: p.pricedVia,
         })),
       });
     }
 
-    // Aggiorna investment "Crypto Binance"
-    const existing = await prisma.investment.findFirst({
-      where: { name: "Crypto Binance" },
-    });
+    // Aggiorna l'Investment matchato con il conto utente.
+    // Lookup tollerante: prima per name === account name (universal-app),
+    // poi fallback al legacy "Crypto Binance" per retrocompat.
+    const existing =
+      (await prisma.investment.findFirst({ where: { name: platform } })) ??
+      (await prisma.investment.findFirst({ where: { name: "Crypto Binance" } }));
     if (existing) {
       await prisma.investment.update({
         where: { id: existing.id },
-        data: { currentValue: totalEur, lastUpdated: new Date() },
+        data: {
+          name: platform,
+          platform,
+          currentValue: totalEur,
+          lastUpdated: new Date(),
+        },
       });
     } else {
       await prisma.investment.create({
         data: {
-          name: "Crypto Binance",
+          name: platform,
           type: "crypto",
-          platform: "Binance",
+          platform,
           currentValue: totalEur,
           currency: "EUR",
         },

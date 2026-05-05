@@ -13,20 +13,24 @@ const APP_RELEASE = `piggybird@${pkg.version}`;
  * (email) viene settato lato client quando il profilo è caricato.
  */
 export async function register() {
-  if (!process.env.SENTRY_DSN) return; // skip se non configurato
-
   if (process.env.NEXT_RUNTIME === "nodejs") {
     // Boot: assicura che APP_MASTER_KEY sia disponibile. Su build distribuita
     // (no env var settata), la chiave viene generata al primo avvio e
-    // salvata nel DB locale dell'utente.
+    // salvata nel DB locale dell'utente. PRIMA del check Sentry — la master
+    // key è critical-path per encrypt/decrypt delle API credentials, anche
+    // su build senza Sentry (es. dev sandbox).
     try {
       const { ensureMasterKey } = await import("./src/lib/crypto");
       await ensureMasterKey();
-    } catch {
-      // Se DB non raggiungibile (primissimo boot pre-migration), riproveremo
-      // alla prima chiamata effettiva di encrypt/decrypt
+    } catch (e) {
+      console.error("[instrumentation] ensureMasterKey failed at boot:", e);
+      // Defensive retry alla prima encrypt/decrypt (vedi i singoli route handler)
     }
+  }
 
+  if (!process.env.SENTRY_DSN) return; // skip Sentry se non configurato
+
+  if (process.env.NEXT_RUNTIME === "nodejs") {
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       release: APP_RELEASE,

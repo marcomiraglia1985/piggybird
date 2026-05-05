@@ -130,8 +130,23 @@ export function ImportClient() {
   const { toast } = useToast();
   const preselectedAccountId = searchParams.get("account");
   const [stage, setStage] = useState<
-    "idle" | "parsing" | "pair" | "no-accounts" | "review" | "committing" | "done"
+    | "idle"
+    | "parsing"
+    | "pair"
+    | "no-accounts"
+    | "review"
+    | "committing"
+    | "trading-confirm"
+    | "done"
   >("idle");
+  /** Tipo dell'ultimo import committato: usato per scegliere il CTA nella
+   *  pagina "done" (Vai ai movimenti vs Vai agli investimenti). */
+  const [lastImportKind, setLastImportKind] = useState<"bank" | "broker">("bank");
+  /** File CSV trading riconosciuti ma in attesa di conferma utente prima
+   *  del commit al broker import endpoint. */
+  const [pendingTrading, setPendingTrading] = useState<
+    { file: File; fileName: string }[]
+  >([]);
   const [data, setData] = useState<AggregatedData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [edits, setEdits] = useState<Editable[]>([]);
@@ -189,6 +204,8 @@ export function ImportClient() {
       const results: FileResult[] = [];
       let lastResponse: ParseResponse | null = null;
       const failed: { fileName: string; error: string }[] = [];
+      // CSV trading riconosciuti — accumulati per conferma utente, non auto-import.
+      const tradingFiles: { file: File; fileName: string }[] = [];
       // Sequenziale per non scatenare race condition sull'AI fallback delle
       // banche nuove (se due file della stessa banca sconosciuta arrivano in
       // parallelo, finirebbero a chiamare Claude due volte).
@@ -200,7 +217,14 @@ export function ImportClient() {
         try {
           const res = await fetch("/api/import/parse", { method: "POST", body: fd });
           if (!res.ok) {
-            const err = await res.json().catch(() => null);
+            const err = (await res.json().catch(() => null)) as
+              | { error?: string; tradingDetected?: boolean }
+              | null;
+            // Trading CSV: differiamo l'import al confirm utente (no auto-commit).
+            if (err?.tradingDetected) {
+              tradingFiles.push({ file, fileName: file.name });
+              continue;
+            }
             throw new Error(err?.error ?? "errore parsing");
           }
           const json = (await res.json()) as ParseResponse;
@@ -222,6 +246,12 @@ export function ImportClient() {
         }
       }
       setParseProgress(null);
+      // Solo trading detected, nessun bank CSV: stage di conferma broker.
+      if (results.length === 0 && tradingFiles.length > 0 && failed.length === 0) {
+        setPendingTrading(tradingFiles);
+        setStage("trading-confirm");
+        return;
+      }
       if (results.length === 0) {
         // Tutti i file falliti: mostriamo il dettaglio del primo + count.
         const first = failed[0];
@@ -229,6 +259,12 @@ export function ImportClient() {
         setError(`${first?.fileName}: ${first?.error}${more}`);
         setStage("idle");
         return;
+      }
+      // Mix bank + trading: i trading vanno in pendingTrading e li gestiamo
+      // dopo il commit bancario, oppure (più semplice) il banner nel pair
+      // stage può listarli. Per ora li accumuliamo e mostriamo info.
+      if (tradingFiles.length > 0) {
+        setPendingTrading(tradingFiles);
       }
       if (failed.length > 0) {
         // Almeno un file OK + qualcuno fallito: prosegui ma surface i fail
@@ -398,6 +434,7 @@ export function ImportClient() {
       const merged = json.merged ?? 0;
       const replaced = json.replaced ?? 0;
       setCommitted(inserted + confirmed + merged + replaced);
+      setLastImportKind("bank");
       const parts: string[] = [];
       if (inserted > 0) parts.push(`${inserted} nuovi`);
       if (merged > 0) parts.push(`${merged} arricchiti (merge)`);
@@ -426,7 +463,58 @@ export function ImportClient() {
     setParseProgress(null);
     setAiAnnotations(new Map());
     setAiCost(null);
+    setPendingTrading([]);
+    setLastImportKind("bank");
   };
+
+  const confirmTradingImport = useCallback(async () => {
+    if (pendingTrading.length === 0) return;
+    setStage("committing");
+    setError(null);
+    let totalInserted = 0;
+    let totalSkipped = 0;
+    const platforms = new Set<string>();
+    const errors: string[] = [];
+    for (const t of pendingTrading) {
+      const fd = new FormData();
+      fd.append("file", t.file);
+      try {
+        const res = await fetch("/api/integrations/stock-trades/import", {
+          method: "POST",
+          body: fd,
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => null);
+          throw new Error(err?.error ?? "errore import broker");
+        }
+        const json = (await res.json()) as {
+          platform: string;
+          total: number;
+          inserted: number;
+          skipped: number;
+        };
+        totalInserted += json.inserted;
+        totalSkipped += json.skipped;
+        platforms.add(json.platform);
+      } catch (e) {
+        errors.push(`${t.fileName}: ${e instanceof Error ? e.message : "err"}`);
+      }
+    }
+    if (errors.length > 0) {
+      setError(errors.join(" · "));
+      setStage("trading-confirm");
+      return;
+    }
+    setCommitted(totalInserted);
+    setLastImportKind("broker");
+    toast({
+      title: `Trade ${[...platforms].join(", ")} importati`,
+      description: `${totalInserted} nuovi · ${totalSkipped} già presenti (deduplicati)`,
+      variant: "success",
+    });
+    setStage("done");
+    router.refresh();
+  }, [pendingTrading, router, toast]);
 
   const runAiReview = useCallback(async () => {
     if (!aiConfigured) {
@@ -1106,16 +1194,82 @@ export function ImportClient() {
     );
   }
 
+  if (stage === "trading-confirm") {
+    return (
+      <div className="max-w-xl mx-auto py-12 space-y-6">
+        <div className="text-center space-y-2">
+          <div className="size-14 mx-auto rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center">
+            <FileText className="size-6 text-emerald-400" />
+          </div>
+          <h2 className="text-xl font-semibold tracking-tight">
+            CSV trading riconosciuto
+          </h2>
+          <p className="text-sm text-[var(--fg-muted)]">
+            {pendingTrading.length === 1
+              ? "1 file di trading rilevato. Conferma per importare i trade nel tuo conto investimenti."
+              : `${pendingTrading.length} file di trading rilevati. Conferma per importarli tutti.`}
+          </p>
+        </div>
+        <div className="surface p-4 space-y-2">
+          {pendingTrading.map((t) => (
+            <div
+              key={t.fileName}
+              className="flex items-center gap-3 rounded-lg bg-[var(--surface-2)] border border-[var(--border)] px-3 py-2.5"
+            >
+              <FileText className="size-4 text-[var(--fg-muted)] shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium truncate">{t.fileName}</div>
+                <div className="text-[11px] text-[var(--fg-subtle)]">
+                  Revolut Trading · trade BUY/SELL/dividendi/cashflow
+                </div>
+              </div>
+            </div>
+          ))}
+          <p className="text-[11px] text-[var(--fg-subtle)] pt-1">
+            I trade verranno inseriti nel tuo conto Revolut Trading.
+            I duplicati (stesso hash riga) sono ignorati automaticamente.
+          </p>
+        </div>
+        {error && (
+          <div className="surface border-rose-500/30 bg-rose-500/5 p-3 text-sm flex items-start gap-2">
+            <AlertTriangle className="size-4 text-rose-400 shrink-0 mt-0.5" />
+            <span>{error}</span>
+          </div>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <button
+            onClick={reset}
+            className="h-9 px-4 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] text-sm hover:border-[var(--border-strong)]"
+          >
+            Annulla
+          </button>
+          <button
+            onClick={confirmTradingImport}
+            className="h-9 px-4 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600 text-white text-sm font-medium inline-flex items-center gap-2"
+          >
+            Importa trade
+            <ArrowUpRight className="size-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (stage === "done") {
+    const isBroker = lastImportKind === "broker";
     return (
       <div className="surface p-12 text-center space-y-4">
         <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="size-14 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center mx-auto">
           <CheckCircle2 className="size-7 text-emerald-400" />
         </motion.div>
         <div>
-          <p className="text-lg font-medium">{committed} movimenti importati</p>
+          <p className="text-lg font-medium">
+            {committed} {isBroker ? "trade importati" : "movimenti importati"}
+          </p>
           <p className="text-sm text-[var(--fg-muted)] mt-1">
-            Trovi tutto nella pagina Movimenti.
+            {isBroker
+              ? "Trovi tutto nella pagina Investimenti."
+              : "Trovi tutto nella pagina Movimenti."}
           </p>
         </div>
         <div className="flex gap-2 justify-center">
@@ -1126,10 +1280,10 @@ export function ImportClient() {
             Importa altro
           </button>
           <a
-            href="/movimenti"
+            href={isBroker ? "/investimenti" : "/movimenti"}
             className="h-9 px-4 rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white text-sm font-medium inline-flex items-center"
           >
-            Vai ai movimenti
+            {isBroker ? "Vai agli investimenti" : "Vai ai movimenti"}
           </a>
         </div>
       </div>

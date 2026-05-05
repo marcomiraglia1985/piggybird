@@ -69,9 +69,18 @@ async function stockTrades(symbol: string) {
 async function cryptoTrades(symbol: string) {
   const trades: Trade[] = [];
 
-  // 1) CryptoTrade: trade manuali (form, CSV import) — fonte primaria
+  // 1) CryptoTrade: solo BUY/SELL veri (no deposit/withdraw che sono
+  //    transferimenti, non compravendite). Mostriamo solo trade con dati
+  //    validi: pricePerUnitEur > 0 e totalEur > 0. Un trade senza prezzo EUR
+  //    è dato incompleto (es. coppia crypto-to-crypto importata via API
+  //    senza rate EUR storico) → non lo plottiamo come pallino.
   const ct = await prisma.cryptoTrade.findMany({
-    where: { asset: symbol },
+    where: {
+      asset: symbol,
+      source: { notIn: ["binance-deposit", "binance-withdraw"] },
+      pricePerUnitEur: { gt: 0 },
+      totalEur: { gt: 0 },
+    },
     orderBy: { date: "asc" },
   });
   for (const t of ct) {

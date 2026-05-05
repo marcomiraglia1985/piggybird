@@ -7,6 +7,8 @@ import {
   getInvestmentsGain,
   getStockIrrInputs,
   getSpyMonthlySeries,
+  getMdloxMonthlySeries,
+  getBrkbMonthlySeries,
 } from "@/lib/queries/investments";
 import {
   getMonthSummary,
@@ -62,6 +64,8 @@ export default async function Dashboard() {
     allCategories,
     stockIrrInputs,
     spySeries,
+    mdloxSeries,
+    brkbSeries,
     worldLandPath,
     fxStaleness,
   ] = await Promise.all([
@@ -90,6 +94,8 @@ export default async function Dashboard() {
     getAllCategoriesLight(),
     getStockIrrInputs(),
     getSpyMonthlySeries(),
+    getMdloxMonthlySeries(),
+    getBrkbMonthlySeries(),
     getWorldLandPath(),
     getFxStalenessReport(),
   ]);
@@ -262,6 +268,8 @@ export default async function Dashboard() {
                 finalByPlatform={stockIrrInputs.finalByPlatform}
                 platforms={stockIrrInputs.platforms}
                 spySeries={spySeries}
+                mdloxSeries={mdloxSeries}
+                brkbSeries={brkbSeries}
               />
             ),
             defaultSpan: 1,

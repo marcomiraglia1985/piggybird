@@ -163,6 +163,10 @@ export function NetWorthChart({ data }: { data: Point[] }) {
               axisLine={false}
               tickLine={false}
               width={56}
+              // Domain stretto sui dati con +10% di padding sopra. Evita
+              // Recharts default che arrotonda a "round numbers" troppo larghi
+              // (es. 600k mostrato quando il max storico è 407k).
+              domain={[0, (dataMax: number) => Math.ceil((dataMax * 1.1) / 10000) * 10000]}
             />
             <Tooltip
               cursor={{ stroke: "#a78bfa", strokeWidth: 1, strokeDasharray: "3 3" }}

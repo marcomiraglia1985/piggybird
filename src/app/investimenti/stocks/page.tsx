@@ -7,12 +7,14 @@ import { CashBalance } from "@/components/investimenti/cash-balance";
 import { StocksRefreshButton } from "@/components/investimenti/stocks-refresh-button";
 import { RichTooltip } from "@/components/ui/rich-tooltip";
 import { ApiConnectionBanner } from "@/components/investimenti/api-connection-banner";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 
 export const dynamic = "force-dynamic";
 
 export default async function TradingPage() {
+  const platform = await getBrokerPlatformName("revolut-stocks");
   const positions = await prisma.stockPosition.findMany({
-    where: { platform: "Revolut" },
+    where: { platform },
     orderBy: [{ assetType: "asc" }, { ticker: "asc" }],
   });
 
@@ -35,13 +37,13 @@ export default async function TradingPage() {
 
   // Realized PnL aggregato (per future chart)
   const realized = await prisma.realizedPnL.findMany({
-    where: { platform: "Revolut" },
+    where: { platform },
     orderBy: { dateSold: "asc" },
   });
 
   // Cash disponibile nel conto trading
   const cashRows = await prisma.tradingCash.findMany({
-    where: { platform: "Revolut" },
+    where: { platform },
     orderBy: { currency: "asc" },
   });
   const cashSerialized = cashRows.map((c) => ({

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 import {
   fetchAllTrades,
   fetchAllDeposits,
@@ -126,9 +127,10 @@ function parsePair(symbol: string): { base: string; quote: string } | null {
 
 export async function POST() {
   try {
+    const platform = await getBrokerPlatformName("binance");
     // 1. Asset attualmente in wallet (per costruire la lista coppie)
     const positions = await prisma.cryptoPosition.findMany({
-      where: { platform: "Binance" },
+      where: { platform },
       select: { asset: true },
     });
     const currentAssets = [...new Set(positions.map((p) => p.asset))];
@@ -178,7 +180,7 @@ export async function POST() {
         await prisma.cryptoTrade.create({
           data: {
             id,
-            platform: "Binance",
+            platform,
             asset: pair.base,
             direction,
             quantity: qty,
@@ -218,7 +220,7 @@ export async function POST() {
         await prisma.cryptoTrade.create({
           data: {
             id,
-            platform: "Binance",
+            platform,
             asset: d.coin,
             direction: "buy", // entrata di quantità
             quantity: qty,
@@ -252,7 +254,7 @@ export async function POST() {
         await prisma.cryptoTrade.create({
           data: {
             id,
-            platform: "Binance",
+            platform,
             asset: w.coin,
             direction: "sell", // uscita di quantità
             quantity: qty,

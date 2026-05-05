@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { fxToEur } from "@/lib/yahoo-finance";
 import { syncStocksTotal } from "@/lib/stocks-sync";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 
 export async function GET() {
+  const platform = await getBrokerPlatformName("revolut-stocks");
   const cash = await prisma.tradingCash.findMany({
-    where: { platform: "Revolut" },
+    where: { platform },
     orderBy: { currency: "asc" },
   });
   return NextResponse.json({ cash });
@@ -26,13 +28,14 @@ export async function PUT(req: NextRequest) {
     return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Dati non validi" }, { status: 400 });
   }
   const { currency, amount } = parsed.data;
+  const platform = await getBrokerPlatformName("revolut-stocks");
   const fx = await fxToEur(currency);
   const result = await prisma.tradingCash.upsert({
-    where: { platform_currency: { platform: "Revolut", currency } },
-    create: { platform: "Revolut", currency, amount, fxToEur: fx },
+    where: { platform_currency: { platform, currency } },
+    create: { platform, currency, amount, fxToEur: fx },
     update: { amount, fxToEur: fx, lastUpdated: new Date() },
   });
-  await syncStocksTotal("Revolut");
+  await syncStocksTotal(platform);
   return NextResponse.json({ cash: result });
 }
 
@@ -46,9 +49,10 @@ export async function DELETE(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Currency mancante" }, { status: 400 });
   }
+  const platform = await getBrokerPlatformName("revolut-stocks");
   await prisma.tradingCash
-    .delete({ where: { platform_currency: { platform: "Revolut", currency: parsed.data.currency } } })
+    .delete({ where: { platform_currency: { platform, currency: parsed.data.currency } } })
     .catch(() => null);
-  await syncStocksTotal("Revolut");
+  await syncStocksTotal(platform);
   return NextResponse.json({ ok: true });
 }

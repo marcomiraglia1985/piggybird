@@ -117,15 +117,27 @@ export default async function ContiPage() {
   }
 
   // Per i conti investment il link "movimenti →" punta alla pagina di dettaglio
-  // /investimenti/<broker> dove sono visibili i trade. Mapping derivato dalla
-  // Investment row paired (stessa logica usata in /investimenti/page.tsx).
-  function investmentDetailHref(account: { name: string; type: string }): string | null {
+  // /investimenti/<broker> dove sono visibili i trade. Match per
+  // Account.provider (binance/revolut-x) + heuristic per Revolut Trading
+  // stocks (provider="generic", riconosciuto dal nome). Universal-app:
+  // funziona con qualsiasi nome scelto dall'utente.
+  function investmentDetailHref(account: {
+    name: string;
+    type: string;
+    provider: string;
+  }): string | null {
     if (account.type !== "investment") return null;
     const inv = investments.find((i) => i.name === account.name);
     if (!inv) return null;
-    if (inv.platform === "Binance" && inv.type === "crypto") return "/investimenti/crypto";
-    if (inv.platform === "Revolut X" && inv.type === "crypto") return "/investimenti/crypto-revolut";
-    if (inv.platform === "Revolut" && inv.type === "stocks") return "/investimenti/stocks";
+    if (account.provider === "binance" && inv.type === "crypto") return "/investimenti/crypto";
+    if (account.provider === "revolut-x" && inv.type === "crypto") return "/investimenti/crypto-revolut";
+    if (
+      inv.type === "stocks" &&
+      /revolut/i.test(account.name) &&
+      !/\bX\b/i.test(account.name)
+    ) {
+      return "/investimenti/stocks";
+    }
     return null;
   }
 

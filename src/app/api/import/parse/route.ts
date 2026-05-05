@@ -40,6 +40,22 @@ export async function POST(req: NextRequest) {
 
   const result = await parseAnyWithFallback(content);
   if (result.format === "unknown") {
+    // CSV trading: surface come hint strutturato così il client può
+    // auto-rerouting all'endpoint broker (/api/integrations/stock-trades/import)
+    // senza chiedere all'utente di andare in Impostazioni.
+    const tradingWarning = result.warnings.find((w) =>
+      w.toLowerCase().includes("csv trading"),
+    );
+    if (tradingWarning) {
+      return NextResponse.json(
+        {
+          error: tradingWarning,
+          warnings: result.warnings,
+          tradingDetected: true,
+        },
+        { status: 400 },
+      );
+    }
     return NextResponse.json(
       { error: "Formato non riconosciuto", warnings: result.warnings },
       { status: 400 },

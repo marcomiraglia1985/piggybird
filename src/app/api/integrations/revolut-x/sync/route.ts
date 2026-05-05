@@ -3,6 +3,7 @@ import { prisma } from "@/lib/prisma";
 import { getBalances } from "@/lib/revolut-x";
 import { priceInEur } from "@/lib/crypto-prices";
 import { markSynced } from "@/lib/credentials";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 
 export const runtime = "nodejs";
 
@@ -17,7 +18,7 @@ export const runtime = "nodejs";
 export async function POST() {
   try {
     const balances = await getBalances();
-    const platform = "Revolut X";
+    const platform = await getBrokerPlatformName("revolut-x");
     const seen = new Set<string>(); // chiave: source|asset
 
     for (const b of balances) {
@@ -89,21 +90,30 @@ export async function POST() {
       });
     }
 
-    // Aggiorna Investment aggregato
+    // Aggiorna l'Investment matchato col conto utente. Universal-app:
+    // Investment.name = platform = nome conto utente.
     const allPositions = await prisma.cryptoPosition.findMany({ where: { platform } });
     const total = allPositions.reduce((s, p) => s + p.eurValue, 0);
-    const investmentName = `Crypto ${platform}`;
-    await prisma.investment.upsert({
-      where: { name: investmentName },
-      update: { currentValue: total, lastUpdated: new Date() },
-      create: {
-        name: investmentName,
-        type: "crypto",
-        platform,
-        currentValue: total,
-        currency: "EUR",
-      },
-    });
+    const legacyName = `Crypto ${platform}`;
+    const existing =
+      (await prisma.investment.findFirst({ where: { name: platform } })) ??
+      (await prisma.investment.findFirst({ where: { name: legacyName } }));
+    if (existing) {
+      await prisma.investment.update({
+        where: { id: existing.id },
+        data: { name: platform, platform, currentValue: total, lastUpdated: new Date() },
+      });
+    } else {
+      await prisma.investment.create({
+        data: {
+          name: platform,
+          type: "crypto",
+          platform,
+          currentValue: total,
+          currency: "EUR",
+        },
+      });
+    }
 
     await markSynced("revolut-x");
     return NextResponse.json({

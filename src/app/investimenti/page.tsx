@@ -265,9 +265,15 @@ export default async function InvestimentiPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {investments.map((inv) => {
             const meta = TYPE_META[inv.type] ?? { label: inv.type, emoji: "•", color: "" };
-            const isBinance = inv.platform === "Binance" && inv.type === "crypto";
-            const isRevolutCrypto = inv.platform === "Revolut X" && inv.type === "crypto";
-            const isStocksRevolut = inv.platform === "Revolut" && inv.type === "stocks";
+            // Universal-app: il platform = nome conto utente (es. "Binance Trading",
+            // "Revolut Trading"). Match heuristic su pattern del nome anziché
+            // string equality, così funziona qualsiasi nome scelto dall'utente.
+            const platLower = inv.platform.toLowerCase();
+            const isBinance = inv.type === "crypto" && platLower.includes("binance");
+            const isRevolutCrypto =
+              inv.type === "crypto" && /revolut/.test(platLower) && /\bx\b/.test(platLower);
+            const isStocksRevolut =
+              inv.type === "stocks" && /revolut/.test(platLower) && !/\bx\b/.test(platLower);
             const detailHref = isBinance
               ? "/investimenti/crypto"
               : isRevolutCrypto

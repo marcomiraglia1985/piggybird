@@ -36,6 +36,8 @@ type Props = {
   finalByPlatform: Record<string, number>;
   platforms: string[];
   spySeries: SpyPoint[] | null;
+  mdloxSeries: SpyPoint[] | null;
+  brkbSeries: SpyPoint[] | null;
 };
 
 type ViewMode = "numeric" | "chart";
@@ -43,8 +45,23 @@ type ViewMode = "numeric" | "chart";
 type Settings = {
   selectedPlatforms: string[] | null;
   viewMode: ViewMode;
+  showMdlox: boolean;
+  showBrkb: boolean;
 };
-const DEFAULTS: Settings = { selectedPlatforms: null, viewMode: "chart" };
+const DEFAULTS: Settings = {
+  selectedPlatforms: null,
+  viewMode: "chart",
+  showMdlox: false,
+  showBrkb: false,
+};
+
+type BenchmarkConfig = {
+  key: "spy" | "mdlox" | "brkb";
+  label: string;
+  longLabel: string;
+  color: string;
+  series: SpyPoint[] | null;
+};
 
 const YEAR_MS = 365.25 * 86_400_000;
 
@@ -96,6 +113,8 @@ export function Sp500BeatWidget({
   finalByPlatform,
   platforms,
   spySeries,
+  mdloxSeries,
+  brkbSeries,
 }: Props) {
   const [opts, setOpts, reset] = useWidgetSettings("sp500-beat", DEFAULTS);
 
@@ -103,6 +122,31 @@ export function Sp500BeatWidget({
     opts.selectedPlatforms == null
       ? platforms
       : opts.selectedPlatforms.filter((p) => platforms.includes(p));
+
+  const benchmarks: BenchmarkConfig[] = useMemo(() => {
+    const list: BenchmarkConfig[] = [
+      { key: "spy", label: "S&P 500", longLabel: "SPY", color: "#94a3b8", series: spySeries },
+    ];
+    if (opts.showMdlox && mdloxSeries) {
+      list.push({
+        key: "mdlox",
+        label: "Larry Fink",
+        longLabel: "MDLOX (BlackRock Global Allocation)",
+        color: "#fb923c",
+        series: mdloxSeries,
+      });
+    }
+    if (opts.showBrkb && brkbSeries) {
+      list.push({
+        key: "brkb",
+        label: "Warren Buffett",
+        longLabel: "BRK-B (Berkshire Hathaway)",
+        color: "#34d399",
+        series: brkbSeries,
+      });
+    }
+    return list;
+  }, [spySeries, mdloxSeries, brkbSeries, opts.showMdlox, opts.showBrkb]);
 
   const data = useMemo(() => {
     if (
@@ -124,35 +168,19 @@ export function Sp500BeatWidget({
     );
     if (finalValue <= 0) return null;
 
-    const lastSpy = spySeries[spySeries.length - 1];
     const lastCashflowMs = filtered.reduce(
       (max, cf) => Math.max(max, new Date(cf.date).getTime()),
       0,
     );
     const todayMs = Math.max(Date.now(), lastCashflowMs + 86_400_000);
     const todayIso = new Date(todayMs).toISOString();
-    const todaySpyPrice = spyPriceAt(spySeries, todayMs) ?? lastSpy.price;
 
     const marcoCashflows: IrrCashflow[] = [
       ...filtered.map((cf) => ({ date: cf.date, amount: cf.amountEur })),
       { date: todayIso, amount: finalValue },
     ];
-
-    let spyFinal = 0;
-    for (const cf of filtered) {
-      const ms = new Date(cf.date).getTime();
-      const spyPrice = spyPriceAt(spySeries, ms);
-      if (spyPrice == null || spyPrice <= 0) continue;
-      spyFinal += -cf.amountEur * (todaySpyPrice / spyPrice);
-    }
-    const spyCashflows: IrrCashflow[] = [
-      ...filtered.map((cf) => ({ date: cf.date, amount: cf.amountEur })),
-      { date: todayIso, amount: spyFinal },
-    ];
-
     const portfolioIrr = computeIRR(marcoCashflows);
-    const spyIrr = computeIRR(spyCashflows);
-    if (portfolioIrr == null || spyIrr == null) return null;
+    if (portfolioIrr == null) return null;
 
     const totalIn = filtered
       .filter((cf) => cf.amountEur < 0)
@@ -162,20 +190,69 @@ export function Sp500BeatWidget({
       .reduce((s, cf) => s + cf.amountEur, 0);
     const portfolioTotalReturn =
       totalIn > 0 ? (totalOutBefore + finalValue - totalIn) / totalIn : 0;
-    const spyTotalReturn =
-      totalIn > 0 ? (totalOutBefore + spyFinal - totalIn) / totalIn : 0;
-
     const startDateIso = filtered[0].date;
     const yearsBetween = (todayMs - new Date(startDateIso).getTime()) / YEAR_MS;
 
-    // Trajectory: valore portfolio a ogni cashflow + oggi.
-    // Marco: forward-compounding al portfolio IRR (smooth approx — non
-    // abbiamo storico day-by-day del portfolio reale).
-    // SPY: shares accumulate basate su prezzi reali SPY, valore = shares ×
-    // prezzo SPY al timestamp.
-    const trajectory: Array<{ date: string; marco: number; spy: number }> = [];
+    // Per ogni benchmark abilitato calcola: shares accumulate basate su prezzo
+    // reale al timestamp di ogni cashflow → finalValue → IRR + total return.
+    type BenchmarkResult = {
+      key: string;
+      label: string;
+      longLabel: string;
+      color: string;
+      irr: number;
+      totalReturn: number;
+      finalValue: number;
+      sharesAt: Map<string, number>;
+      lastPrice: number;
+    };
+    const benchResults: BenchmarkResult[] = [];
+    for (const b of benchmarks) {
+      const series = b.series;
+      if (!series || series.length < 2) continue;
+      const last = series[series.length - 1];
+      const todayPrice = spyPriceAt(series, todayMs) ?? last.price;
+      let bFinal = 0;
+      let shares = 0;
+      const sharesAt = new Map<string, number>();
+      for (const cf of filtered) {
+        const ms = new Date(cf.date).getTime();
+        const price = spyPriceAt(series, ms);
+        if (price == null || price <= 0) {
+          sharesAt.set(cf.date, shares);
+          continue;
+        }
+        shares += -cf.amountEur / price;
+        sharesAt.set(cf.date, shares);
+        bFinal += -cf.amountEur * (todayPrice / price);
+      }
+      const cf: IrrCashflow[] = [
+        ...filtered.map((c) => ({ date: c.date, amount: c.amountEur })),
+        { date: todayIso, amount: bFinal },
+      ];
+      const irr = computeIRR(cf);
+      if (irr == null) continue;
+      const tr =
+        totalIn > 0 ? (totalOutBefore + bFinal - totalIn) / totalIn : 0;
+      benchResults.push({
+        key: b.key,
+        label: b.label,
+        longLabel: b.longLabel,
+        color: b.color,
+        irr,
+        totalReturn: tr,
+        finalValue: bFinal,
+        sharesAt,
+        lastPrice: todayPrice,
+      });
+    }
+    const spy = benchResults.find((b) => b.key === "spy");
+    if (!spy) return null;
+
+    // Trajectory unificata: 1 colonna per benchmark + colonna "marco".
+    type TrajectoryPoint = { date: string; marco: number } & Record<string, number>;
+    const trajectory: TrajectoryPoint[] = [];
     let marcoVal = 0;
-    let spyShares = 0;
     let prevMs = 0;
     for (const cf of filtered) {
       const ms = new Date(cf.date).getTime();
@@ -183,49 +260,48 @@ export function Sp500BeatWidget({
       if (yearsFromPrev > 0) {
         marcoVal *= Math.pow(1 + portfolioIrr, yearsFromPrev);
       }
-      // Cashflow effect: TOP-UP (cf.amountEur < 0) → +|amount|, WITHDRAWAL → -amount
       marcoVal += -cf.amountEur;
-      const spyPrice = spyPriceAt(spySeries, ms);
-      if (spyPrice != null && spyPrice > 0) {
-        spyShares += -cf.amountEur / spyPrice;
+      const point: TrajectoryPoint = { date: cf.date, marco: Math.max(0, marcoVal) };
+      for (const br of benchResults) {
+        const shares = br.sharesAt.get(cf.date) ?? 0;
+        const series = benchmarks.find((b) => b.key === br.key)?.series;
+        const px = series ? spyPriceAt(series, ms) : null;
+        const val = px != null ? shares * px : 0;
+        point[br.key] = Math.max(0, val);
       }
-      const spyVal = spyPrice != null ? spyShares * spyPrice : 0;
-      trajectory.push({
-        date: cf.date,
-        marco: Math.max(0, marcoVal),
-        spy: Math.max(0, spyVal),
-      });
+      trajectory.push(point);
       prevMs = ms;
     }
-    // Punto "oggi"
     if (prevMs > 0) {
       const yearsFromLast = (todayMs - prevMs) / YEAR_MS;
       if (yearsFromLast > 0) {
         marcoVal *= Math.pow(1 + portfolioIrr, yearsFromLast);
       }
-      const spyValToday = spyShares * todaySpyPrice;
-      trajectory.push({
-        date: todayIso,
-        marco: Math.max(0, marcoVal),
-        spy: Math.max(0, spyValToday),
-      });
+      const point: TrajectoryPoint = { date: todayIso, marco: Math.max(0, marcoVal) };
+      for (const br of benchResults) {
+        const lastShares = [...br.sharesAt.values()].pop() ?? 0;
+        point[br.key] = Math.max(0, lastShares * br.lastPrice);
+      }
+      trajectory.push(point);
     }
 
     return {
       portfolioIrr,
-      spyIrr,
       portfolioTotalReturn,
-      spyTotalReturn,
-      cagrDelta: portfolioIrr - spyIrr,
-      totalDelta: portfolioTotalReturn - spyTotalReturn,
-      beating: portfolioIrr - spyIrr > 0,
+      benchResults,
+      // Compat: vecchie proprietà ancora usate dal layout numerico
+      spyIrr: spy.irr,
+      spyTotalReturn: spy.totalReturn,
+      spyFinal: spy.finalValue,
+      cagrDelta: portfolioIrr - spy.irr,
+      totalDelta: portfolioTotalReturn - spy.totalReturn,
+      beating: portfolioIrr - spy.irr > 0,
       years: yearsBetween,
       startDateIso,
       finalValue,
-      spyFinal,
       trajectory,
     };
-  }, [cashflows, finalByPlatform, activePlatforms, spySeries]);
+  }, [cashflows, finalByPlatform, activePlatforms, spySeries, benchmarks]);
 
   function togglePlatform(p: string) {
     const current = activePlatforms;
@@ -326,6 +402,46 @@ export function Sp500BeatWidget({
                   ))}
                 </div>
               )}
+
+              <div className="space-y-1.5 pt-2 border-t border-[var(--border)]/50">
+                <span className="text-[var(--fg-muted)]">Benchmark extra</span>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={opts.showMdlox}
+                    onChange={(e) => setOpts({ showMdlox: e.target.checked })}
+                    className="size-3.5 accent-orange-500"
+                    disabled={!mdloxSeries}
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-orange-400" />
+                    Larry Fink
+                    <span className="text-[10px] text-[var(--fg-subtle)]">
+                      MDLOX
+                    </span>
+                  </span>
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={opts.showBrkb}
+                    onChange={(e) => setOpts({ showBrkb: e.target.checked })}
+                    className="size-3.5 accent-emerald-500"
+                    disabled={!brkbSeries}
+                  />
+                  <span className="flex items-center gap-1.5">
+                    <span className="size-2 rounded-full bg-emerald-400" />
+                    Warren Buffett
+                    <span className="text-[10px] text-[var(--fg-subtle)]">
+                      BRK-B
+                    </span>
+                  </span>
+                </label>
+                <p className="text-[10px] text-[var(--fg-subtle)] leading-relaxed">
+                  Confronta la tua performance contro il fondo attivo di Larry
+                  Fink (MDLOX, dal 1989) o Berkshire Hathaway di Warren Buffett.
+                </p>
+              </div>
             </div>
           </WidgetSettingsPopover>
         </div>
@@ -496,8 +612,7 @@ function ChartView({ data }: { data: WidgetData }) {
                 const p = payload[0].payload as {
                   date: string;
                   marco: number;
-                  spy: number;
-                };
+                } & Record<string, number>;
                 return (
                   <div className="surface-2 px-3 py-2 text-xs shadow-xl">
                     <div className="text-[var(--fg-muted)]">
@@ -514,13 +629,18 @@ function ChartView({ data }: { data: WidgetData }) {
                         {formatEUR(p.marco, { compact: true })}
                       </span>
                     </div>
-                    <div className="flex items-center gap-1.5">
-                      <span className="size-1.5 rounded-full bg-slate-400" />
-                      <span className="text-[var(--fg-muted)]">SPY</span>
-                      <span className="tabular-nums font-medium ml-auto">
-                        {formatEUR(p.spy, { compact: true })}
-                      </span>
-                    </div>
+                    {data.benchResults.map((br) => (
+                      <div key={br.key} className="flex items-center gap-1.5">
+                        <span
+                          className="size-1.5 rounded-full"
+                          style={{ background: br.color }}
+                        />
+                        <span className="text-[var(--fg-muted)]">{br.label}</span>
+                        <span className="tabular-nums font-medium ml-auto">
+                          {formatEUR(p[br.key] ?? 0, { compact: true })}
+                        </span>
+                      </div>
+                    ))}
                   </div>
                 );
               }}
@@ -533,14 +653,17 @@ function ChartView({ data }: { data: WidgetData }) {
               dot={false}
               animationDuration={900}
             />
-            <Line
-              type="monotone"
-              dataKey="spy"
-              stroke="#94a3b8"
-              strokeWidth={2}
-              dot={false}
-              animationDuration={900}
-            />
+            {data.benchResults.map((br) => (
+              <Line
+                key={br.key}
+                type="monotone"
+                dataKey={br.key}
+                stroke={br.color}
+                strokeWidth={2}
+                dot={false}
+                animationDuration={900}
+              />
+            ))}
           </LineChart>
         </ResponsiveContainer>
       </div>

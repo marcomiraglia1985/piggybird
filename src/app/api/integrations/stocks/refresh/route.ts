@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import { refreshAllStockPrices } from "@/lib/stocks-sync";
+import { getBrokerPlatformName } from "@/lib/broker-platform-resolver";
 
 export const runtime = "nodejs";
 
 export async function POST() {
   try {
-    const platform = "Revolut";
+    const platform = await getBrokerPlatformName("revolut-stocks");
     const updates = await refreshAllStockPrices(platform);
     return NextResponse.json({ updates });
   } catch (e) {

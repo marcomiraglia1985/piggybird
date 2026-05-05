@@ -34,7 +34,7 @@ cp -R .next/standalone/. src-tauri/standalone/
 rm -f src-tauri/standalone/.env src-tauri/standalone/.env.local 2>/dev/null || true
 {
   echo "# Piggybird app .env baked — NON modificare"
-  for key in PIGGYBIRD_STATS_URL BETA_AI_FALLBACK_KEY SENTRY_DSN NEXT_PUBLIC_SENTRY_DSN GITHUB_TOKEN GITHUB_REPO; do
+  for key in PIGGYBIRD_STATS_URL BETA_AI_FALLBACK_KEY SENTRY_DSN NEXT_PUBLIC_SENTRY_DSN GITHUB_TOKEN GITHUB_REPO NEXT_PUBLIC_POSTHOG_KEY NEXT_PUBLIC_POSTHOG_HOST TEMPLATE_REGISTRY_URL; do
     val=$(grep "^${key}=" .env 2>/dev/null | head -1 | sed "s/^${key}=//")
     if [ -n "$val" ]; then
       echo "${key}=${val}"
