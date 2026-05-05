@@ -95,12 +95,12 @@ export async function POST() {
     const allPositions = await prisma.cryptoPosition.findMany({ where: { platform } });
     const total = allPositions.reduce((s, p) => s + p.eurValue, 0);
     const legacyName = `Crypto ${platform}`;
-    const existing =
+    const existingInvestment =
       (await prisma.investment.findFirst({ where: { name: platform } })) ??
       (await prisma.investment.findFirst({ where: { name: legacyName } }));
-    if (existing) {
+    if (existingInvestment) {
       await prisma.investment.update({
-        where: { id: existing.id },
+        where: { id: existingInvestment.id },
         data: { name: platform, platform, currentValue: total, lastUpdated: new Date() },
       });
     } else {
