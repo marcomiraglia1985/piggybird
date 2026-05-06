@@ -13,7 +13,7 @@ const TYPES = [
   { value: "savings", label: "Risparmi", emoji: "🐷", desc: "Conto deposito o salvadanaio" },
   { value: "investment", label: "Investimenti", emoji: "📈", desc: "Conto trading dedicato" },
   { value: "joint", label: "Cointestato", emoji: "👥", desc: "Conto condiviso (es. con compagn*)" },
-  { value: "friendsplit", label: "Friendsplit", emoji: "🤝", desc: "Spese condivise: chi deve quanto a chi" },
+  { value: "friendsplit", label: "Friendsplit", emoji: "🤝", desc: "Spese di gruppo: aggiungi membri, registra spese pagate da uno per tutti, l'app calcola chi deve quanto" },
   { value: "credit", label: "Crediti", emoji: "📖", desc: "Soldi prestati ad amici o persone" },
 ] as const;
 

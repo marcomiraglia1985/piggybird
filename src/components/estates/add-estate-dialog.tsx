@@ -74,8 +74,10 @@ export function AddEstateDialog({
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState(estate?.name ?? "");
   const [type, setType] = useState(estate?.type ?? "apartment");
-  const [holding, setHolding] = useState<"owned" | "rented">(
-    (estate?.holding === "rented" ? "rented" : "owned"),
+  // No default: l'utente DEVE scegliere esplicitamente. Default "owned" silente
+  // era pericoloso per inquilini (ROI/equity calcolati come proprietari).
+  const [holding, setHolding] = useState<"owned" | "rented" | null>(
+    estate?.holding === "rented" ? "rented" : estate?.holding === "owned" ? "owned" : null,
   );
   const [emoji, setEmoji] = useState(estate?.emoji ?? "🏢");
   const [city, setCity] = useState(estate?.city ?? "");
@@ -167,7 +169,7 @@ export function AddEstateDialog({
     }
     setName("");
     setType("apartment");
-    setHolding("owned");
+    setHolding(null);
     setEmoji("🏢");
     setCity("");
     setCountry("");
@@ -190,6 +192,10 @@ export function AddEstateDialog({
   async function submit() {
     if (!name.trim()) {
       setError("Il nome è obbligatorio");
+      return;
+    }
+    if (!holding) {
+      setError("Seleziona se sei proprietario o inquilino");
       return;
     }
     // Validazione mutuo lato client (i 4 campi base sono required quando attivo)

@@ -1,7 +1,17 @@
 import { prisma } from "@/lib/prisma";
 
-/** Soglia "stale" — sopra questa, suggeriamo all'utente di ricaricare il CSV. */
-export const STALE_CSV_DAYS = 14;
+/** Soglia "stale" di default — sopra questa, suggeriamo all'utente di
+ *  ricaricare il CSV. Override-abile via Setting `csv.staleDays` (utile per
+ *  utenti che importano mensile o quarterly invece che settimanale). */
+export const STALE_CSV_DAYS_DEFAULT = 14;
+export const STALE_CSV_DAYS = STALE_CSV_DAYS_DEFAULT; // re-export per back-compat consumers
+
+async function resolveStaleDays(): Promise<number> {
+  const s = await prisma.setting.findUnique({ where: { key: "csv.staleDays" } });
+  if (!s?.value) return STALE_CSV_DAYS_DEFAULT;
+  const n = parseInt(s.value, 10);
+  return Number.isFinite(n) && n >= 1 && n <= 365 ? n : STALE_CSV_DAYS_DEFAULT;
+}
 
 export type StaleAccount = {
   id: string;
@@ -18,7 +28,8 @@ export type StaleAccount = {
  * passa per il commit.
  */
 export async function getStaleCsvAccounts(): Promise<StaleAccount[]> {
-  const threshold = new Date(Date.now() - STALE_CSV_DAYS * 24 * 60 * 60 * 1000);
+  const days = await resolveStaleDays();
+  const threshold = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
   const accounts = await prisma.account.findMany({
     where: {
       active: true,

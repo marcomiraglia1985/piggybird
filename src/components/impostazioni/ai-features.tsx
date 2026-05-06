@@ -213,9 +213,10 @@ export function AiFeaturesSection() {
                   </div>
                 )}
                 <p className="text-[10px] text-[var(--fg-subtle)] pt-1 border-t border-[var(--border)]/50">
-                  Costi calcolati lato app sui prezzi pubblici Anthropic
-                  (Sonnet $3/$15 per 1M, Haiku $0.80/$4 per 1M). Il valore
-                  ufficiale lo trovi su{" "}
+                  Costi calcolati lato app dai prezzi pubblici Anthropic in USD,
+                  convertiti in EUR al cambio ECB del giorno (Sonnet ≈ €2,75 input
+                  / €13,80 output per 1M token; Haiku ≈ €0,73 / €3,67). Il
+                  valore ufficiale lo trovi su{" "}
                   <a
                     href="https://console.anthropic.com/settings/usage"
                     target="_blank"

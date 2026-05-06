@@ -1426,6 +1426,7 @@ function SoftDupReviewSection({
                   active={e.action === "merge"}
                   tone="emerald"
                   onClick={() => onAction(e.externalId, "merge")}
+                  title="Tieni la tx esistente nel DB. Aggiungi solo i campi vuoti dal CSV (notes, beneficiary se mancanti). Sicuro — preserva categorizzazioni manuali."
                 >
                   🤝 Merge
                 </ChoiceBtn>
@@ -1433,6 +1434,7 @@ function SoftDupReviewSection({
                   active={e.action === "replace"}
                   tone="amber"
                   onClick={() => onAction(e.externalId, "replace")}
+                  title="Sovrascrivi la tx esistente con i dati del CSV. Perdi eventuali edit manuali (categoria, note). Usa se il DB era sbagliato."
                 >
                   📥 Replace
                 </ChoiceBtn>
@@ -1440,6 +1442,7 @@ function SoftDupReviewSection({
                   active={e.action === "create"}
                   tone="rose"
                   onClick={() => onAction(e.externalId, "create")}
+                  title="Inserisci la tx CSV come nuova, separata dalla esistente. Usa se sono DAVVERO 2 movimenti distinti capitati nello stesso giorno con stesso importo (raro)."
                 >
                   ➕ Keep both
                 </ChoiceBtn>
@@ -1551,11 +1554,13 @@ function ChoiceBtn({
   tone,
   onClick,
   children,
+  title,
 }: {
   active: boolean;
   tone: "emerald" | "amber" | "rose";
   onClick: () => void;
   children: React.ReactNode;
+  title?: string;
 }) {
   const tones: Record<string, { active: string; inactive: string }> = {
     emerald: {
@@ -1576,6 +1581,7 @@ function ChoiceBtn({
     <button
       type="button"
       onClick={onClick}
+      title={title}
       className={cn(
         "h-7 px-2.5 rounded-md text-xs border font-medium transition-colors",
         active ? t.active : t.inactive,
