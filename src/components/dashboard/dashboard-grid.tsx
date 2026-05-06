@@ -24,6 +24,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Columns2, Columns3, Square, X, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { MasonryGrid } from "./masonry-grid";
 
 const PLACEMENT_KEY = "fp-dashboard-placement-v2";
 const COLS_KEY = "fp-dashboard-cols";
@@ -135,6 +136,53 @@ const collisionDetection: CollisionDetection = (args) => {
   if (rectColl.length > 0) return rectColl;
   return closestCorners(args);
 };
+
+/**
+ * Flatten {wide, cols} → ordered string[] (per DnD su singola lista).
+ * Ordine visivo: wide prima (in ordine), poi cols flatten row-by-row.
+ * Mantiene mapping coerente con come MasonryGrid renderizza in static.
+ */
+function placementToFlat(p: Placement): string[] {
+  const flat: string[] = [...p.wide];
+  const maxLen = Math.max(0, ...p.cols.map((c) => c.length));
+  for (let row = 0; row < maxLen; row++) {
+    for (let c = 0; c < p.cols.length; c++) {
+      const id = p.cols[c]?.[row];
+      if (id) flat.push(id);
+    }
+  }
+  return flat;
+}
+
+/**
+ * Inverso: flat ordered → {wide, cols}. Wide items mantengono il loro ordine
+ * dal flat (gli span > 1 vanno nella zona wide). Span = 1 vengono distribuiti
+ * round-robin tra le colonne, MA in ordine flat (non per "shortest column").
+ * La masonry visiva poi sceglierà la colonna più corta automaticamente, quindi
+ * l'assegnazione cols è puramente storage — non determina il rendering.
+ */
+function flatToPlacement(
+  flat: string[],
+  cardMap: Map<string, DashboardCard>,
+  spans: Record<string, number>,
+  cols: Cols,
+): Placement {
+  const wide: string[] = [];
+  const colArrays: string[][] = Array.from({ length: cols }, () => []);
+  let cursor = 0;
+  for (const id of flat) {
+    const card = cardMap.get(id);
+    if (!card) continue;
+    const sp = effectiveSpan(card, spans, cols);
+    if (sp > 1) {
+      wide.push(id);
+    } else {
+      colArrays[cursor].push(id);
+      cursor = (cursor + 1) % cols;
+    }
+  }
+  return { wide, cols: colArrays };
+}
 
 function shortestColIdx(cols: string[][]): number {
   let best = 0;
@@ -472,155 +520,123 @@ export function DashboardGrid({
     persistPlacement(next);
   }
 
+  /**
+   * DnD handler per layout flat: arrayMove sul flat order, poi rebuild
+   * Placement {wide, cols} via flatToPlacement.
+   */
+  function onDragEndFlat(e: DragEndEvent) {
+    const cur = placementRef.current;
+    const flat = placementToFlat(cur);
+    const aId = String(e.active.id);
+    const oId = e.over ? String(e.over.id) : null;
+    if (!oId || aId === oId) {
+      try {
+        localStorage.setItem(PLACEMENT_KEY, JSON.stringify(cur));
+      } catch {}
+      return;
+    }
+    const fromIdx = flat.indexOf(aId);
+    const toIdx = flat.indexOf(oId);
+    if (fromIdx < 0 || toIdx < 0 || fromIdx === toIdx) return;
+    const newFlat = arrayMove(flat, fromIdx, toIdx);
+    const next = flatToPlacement(newFlat, cardMap, spansRef.current, colsRef.current);
+    persistPlacement(next);
+  }
+
   const hiddenCards = cards.filter((c) => hidden.has(c.id));
   const isEditing = mounted && !locked;
 
   // ----- Static (locked / pre-mount) -----
-  // Stesso rendering di edit mode (wide zone in alto + cols zone sotto): così
-  // il toggle Edit non causa salti. Niente più MasonryGrid auto-packing che
-  // muoveva le card di colonna a piacere — l'utente vuole column-stable.
+  // True masonry: i widget narrow "salgono" a riempire lo spazio vuoto SOPRA
+  // di loro (impossibile con CSS grid puro cross-browser). Implementato in JS
+  // via <MasonryGrid>: misura altezze + position absolute + ResizeObserver.
+  // Trade-off: in edit mode si usa wide+cols zones per supportare DnD →
+  // c'è un salto al toggle Edit. Refactor unified masonry+DnD è in TODO.
   const staticView = (() => {
     const hasWide = visibleP.wide.length > 0;
     const hasCols = visibleP.cols.some((col) => col.length > 0);
+    const masonryItems: { id: string; span: number; node: React.ReactNode }[] = [];
+    for (const id of visibleP.wide) {
+      const card = cardMap.get(id);
+      if (!card) continue;
+      masonryItems.push({ id, span: getCardSpan(card), node: card.node });
+    }
+    const maxColLen = Math.max(0, ...visibleP.cols.map((c) => c.length));
+    for (let row = 0; row < maxColLen; row++) {
+      for (let c = 0; c < visibleP.cols.length; c++) {
+        const id = visibleP.cols[c]?.[row];
+        if (!id) continue;
+        const card = cardMap.get(id);
+        if (!card) continue;
+        masonryItems.push({ id, span: getCardSpan(card), node: card.node });
+      }
+    }
     return (
       <div className="space-y-6">
-        {hasWide && (
-          <div
-            className="grid gap-6"
-            style={{
-              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-              gridAutoFlow: "row",
-            }}
-          >
-            {visibleP.wide.map((id) => {
-              const card = cardMap.get(id);
-              if (!card) return null;
-              const span = getCardSpan(card);
-              return (
-                <div
-                  key={id}
-                  style={{ gridColumn: `span ${span}` }}
-                  className="min-w-0"
-                >
-                  {card.node}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        {hasCols && (
-          <div
-            className="grid gap-6 items-start"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-          >
-            {visibleP.cols.map((col, idx) => (
-              <div key={idx} className="flex flex-col gap-6 min-w-0">
-                {col.map((id) => {
-                  const card = cardMap.get(id);
-                  if (!card) return null;
-                  return <div key={id}>{card.node}</div>;
-                })}
-              </div>
-            ))}
-          </div>
+        {(hasWide || hasCols) && (
+          <MasonryGrid items={masonryItems} cols={cols} gap={24} />
         )}
       </div>
     );
   })();
 
-  // ----- Edit mode -----
-  const editView = (
-    <div className="space-y-3">
-      <div className="flex items-center justify-end gap-1.5">
-        <span className="text-[11px] text-[var(--color-fg-subtle)] mr-1">Layout</span>
-        <ColsButton current={cols} value={1} onClick={setColsPersist} icon={<Square className="size-3" />} label="1 colonna" />
-        <ColsButton current={cols} value={2} onClick={setColsPersist} icon={<Columns2 className="size-3.5" />} label="2 colonne" />
-        <ColsButton current={cols} value={3} onClick={setColsPersist} icon={<Columns3 className="size-3.5" />} label="3 colonne" />
-      </div>
-
-      <DndContext
-        sensors={sensors}
-        collisionDetection={collisionDetection}
-        onDragStart={() => setIsDragging(true)}
-        onDragOver={onDragOver}
-        onDragEnd={(e) => {
-          setIsDragging(false);
-          onDragEnd(e);
-        }}
-        onDragCancel={() => setIsDragging(false)}
-      >
-        <div className="space-y-6">
-          {/* Wide zone (CSS grid auto-flow row, NO dense): preservare l'ordine
-              utente. "dense" causerebbe shuffle automatico in edit mode → fix
-              audit 2026-05-06. */}
-          <DroppableContainer id={WIDE} isDragging={isDragging} className="min-h-[40px]">
-            <SortableContext items={visibleP.wide} strategy={rectSortingStrategy}>
-              <div
-                className="grid gap-6"
-                style={{
-                  gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                  gridAutoFlow: "row",
-                }}
-              >
-                {visibleP.wide.map((id) => {
-                  const card = cardMap.get(id);
-                  if (!card) return null;
-                  return (
-                    <SortableCard
-                      key={id}
-                      id={id}
-                      span={getCardSpan(card)}
-                      allowedSpans={getAllowedSpans(card)}
-                      removable={card.removable !== false}
-                      onHide={() => hideCard(id)}
-                      onSpan={(s) => setCardSpan(id, s)}
-                    >
-                      {card.node}
-                    </SortableCard>
-                  );
-                })}
-              </div>
-            </SortableContext>
-          </DroppableContainer>
-
-          {/* Column zones: ogni colonna è una pila flex indipendente */}
-          <div
-            className="grid gap-6 items-start"
-            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
-          >
-            {visibleP.cols.map((col, idx) => (
-              <DroppableContainer
-                key={idx}
-                id={`col-${idx}`}
-                isDragging={isDragging}
-                className="flex flex-col gap-6 min-h-[200px]"
-              >
-                <SortableContext items={col} strategy={verticalListSortingStrategy}>
-                  {col.map((id) => {
-                    const card = cardMap.get(id);
-                    if (!card) return null;
-                    return (
-                      <SortableCard
-                        key={id}
-                        id={id}
-                        span={1}
-                        allowedSpans={getAllowedSpans(card)}
-                        removable={card.removable !== false}
-                        onHide={() => hideCard(id)}
-                        onSpan={(s) => setCardSpan(id, s)}
-                      >
-                        {card.node}
-                      </SortableCard>
-                    );
-                  })}
-                </SortableContext>
-              </DroppableContainer>
-            ))}
-          </div>
+  // ----- Edit mode (UNIFIED masonry + DnD) -----
+  // Stesso layout di static (MasonryGrid) → niente jump al toggle Edit. DnD
+  // su singolo SortableContext con flat order: drag = arrayMove, masonry
+  // ricalcola le posizioni in base al nuovo ordine.
+  const editView = (() => {
+    const flat = placementToFlat(visibleP);
+    const masonryItemsEdit: { id: string; span: number; node: React.ReactNode }[] = [];
+    for (const id of flat) {
+      const card = cardMap.get(id);
+      if (!card) continue;
+      masonryItemsEdit.push({ id, span: getCardSpan(card), node: card.node });
+    }
+    return (
+      <div className="space-y-3">
+        <div className="flex items-center justify-end gap-1.5">
+          <span className="text-[11px] text-[var(--color-fg-subtle)] mr-1">Layout</span>
+          <ColsButton current={cols} value={1} onClick={setColsPersist} icon={<Square className="size-3" />} label="1 colonna" />
+          <ColsButton current={cols} value={2} onClick={setColsPersist} icon={<Columns2 className="size-3.5" />} label="2 colonne" />
+          <ColsButton current={cols} value={3} onClick={setColsPersist} icon={<Columns3 className="size-3.5" />} label="3 colonne" />
         </div>
-      </DndContext>
-    </div>
-  );
+
+        <DndContext
+          sensors={sensors}
+          onDragStart={() => setIsDragging(true)}
+          onDragEnd={(e) => {
+            setIsDragging(false);
+            onDragEndFlat(e);
+          }}
+          onDragCancel={() => setIsDragging(false)}
+        >
+          <SortableContext items={flat} strategy={rectSortingStrategy}>
+            <MasonryGrid
+              items={masonryItemsEdit}
+              cols={cols}
+              gap={24}
+              wrapItem={({ item, baseStyle, setRef }) => {
+                const card = cardMap.get(item.id);
+                if (!card) return null;
+                return (
+                  <MasonryEditCard
+                    id={item.id}
+                    baseStyle={baseStyle}
+                    setRef={setRef}
+                    card={card}
+                    span={item.span}
+                    allowedSpans={getAllowedSpans(card)}
+                    onHide={() => hideCard(item.id)}
+                    onSpan={(s) => setCardSpan(item.id, s)}
+                  />
+                );
+              }}
+            />
+          </SortableContext>
+        </DndContext>
+      </div>
+    );
+  })();
 
   return (
     <div className="space-y-6">
@@ -892,6 +908,101 @@ function SortableCard({
         </button>
       </div>
       {children}
+    </div>
+  );
+}
+
+/**
+ * Card per edit mode su layout masonry: combina lo style absolute calcolato
+ * dalla MasonryGrid con il transform di useSortable. La masonry posiziona,
+ * il sortable trasla durante il drag.
+ */
+function MasonryEditCard({
+  id,
+  baseStyle,
+  setRef,
+  card,
+  span,
+  allowedSpans,
+  onHide,
+  onSpan,
+}: {
+  id: string;
+  baseStyle: React.CSSProperties;
+  setRef: (el: HTMLElement | null) => void;
+  card: DashboardCard;
+  span: number;
+  allowedSpans: number[];
+  onHide: () => void;
+  onSpan: (s: number) => void;
+}) {
+  const removable = card.removable !== false;
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id });
+
+  const combinedRef = (el: HTMLElement | null) => {
+    setRef(el);
+    setNodeRef(el);
+  };
+
+  // Combina absolute (top/left/width) con transform (translate) durante drag
+  const sortableTransform = transform ? CSS.Transform.toString(transform) : undefined;
+  const style: React.CSSProperties = {
+    ...baseStyle,
+    transform: sortableTransform,
+    transition: [baseStyle.transition, transition].filter(Boolean).join(", ") || undefined,
+  };
+
+  return (
+    <div
+      ref={combinedRef}
+      style={style}
+      className={cn("relative group", isDragging && "z-20 opacity-80 shadow-2xl")}
+    >
+      <div className="absolute bottom-full right-3 mb-1 z-10 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-[var(--color-bg-elevated)] border border-[var(--color-border)] rounded-md shadow-md px-1 py-0.5">
+        {allowedSpans.length > 1 && (
+          <>
+            <span className="text-[10px] text-[var(--color-fg-subtle)] px-1">cols</span>
+            {allowedSpans.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onSpan(s)}
+                title={`Larghezza ${s} ${s === 1 ? "colonna" : "colonne"}`}
+                className={cn(
+                  "size-6 inline-flex items-center justify-center rounded text-[11px] font-medium tabular-nums transition-colors",
+                  span === s
+                    ? "bg-violet-500/15 text-violet-300"
+                    : "text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface-2)]",
+                )}
+              >
+                {s}
+              </button>
+            ))}
+            <span className="w-px h-4 bg-[var(--color-border)] mx-1" />
+          </>
+        )}
+        {removable && (
+          <button
+            type="button"
+            onClick={onHide}
+            title="Nascondi box"
+            className="size-6 inline-flex items-center justify-center rounded text-[var(--color-fg-muted)] hover:text-rose-400 hover:bg-rose-500/10"
+          >
+            <X className="size-3.5" />
+          </button>
+        )}
+        <button
+          type="button"
+          {...attributes}
+          {...listeners}
+          title="Trascina"
+          className="size-6 inline-flex items-center justify-center rounded text-[var(--color-fg-muted)] hover:text-[var(--color-fg)] hover:bg-[var(--color-surface-2)] cursor-grab active:cursor-grabbing"
+        >
+          <GripVertical className="size-3.5" />
+        </button>
+      </div>
+      {card.node}
     </div>
   );
 }

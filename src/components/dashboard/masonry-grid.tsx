@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  type CSSProperties,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from "react";
 
 /**
  * True masonry layout (Pinterest-style): ogni card "sale" a riempire lo
@@ -14,6 +20,10 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
  *
  * Re-layout automatico via ResizeObserver (window resize + content height
  * changes via async data, expand/collapse, ecc.).
+ *
+ * Supporta wrapper custom per item via prop `wrapItem` (es. edit mode con
+ * DnD: il wrapper attacca useSortable handlers + transform su top dello
+ * style absolute calcolato).
  */
 
 export type MasonryItem = {
@@ -24,14 +34,23 @@ export type MasonryItem = {
 
 type Position = { top: number; left: number; width: number };
 
+export type MasonryWrapItemArgs = {
+  item: MasonryItem;
+  baseStyle: CSSProperties;
+  /** Da chiamare nel ref dell'elemento outer per misurazione altezza masonry. */
+  setRef: (el: HTMLElement | null) => void;
+};
+
 export function MasonryGrid({
   items,
   cols,
   gap = 24,
+  wrapItem,
 }: {
   items: MasonryItem[];
   cols: number;
   gap?: number;
+  wrapItem?: (args: MasonryWrapItemArgs) => React.ReactNode;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -120,29 +139,32 @@ export function MasonryGrid({
       {items.map((item) => {
         const pos = layout.get(item.id);
         const span = Math.max(1, Math.min(item.span, cols));
+        const baseStyle: CSSProperties =
+          layoutReady && pos
+            ? {
+                position: "absolute",
+                top: pos.top,
+                left: pos.left,
+                width: pos.width,
+                transition: "top 0.25s ease, left 0.25s ease, width 0.25s ease",
+              }
+            : {
+                // Phase 1: posizione naturale nella grid, span colonne
+                gridColumn: `span ${span}`,
+              };
+        const setRef = (el: HTMLElement | null) => {
+          if (el) itemRefs.current.set(item.id, el as HTMLDivElement);
+          else itemRefs.current.delete(item.id);
+        };
+        if (wrapItem) {
+          return (
+            <span key={item.id} style={{ display: "contents" }}>
+              {wrapItem({ item, baseStyle, setRef })}
+            </span>
+          );
+        }
         return (
-          <div
-            key={item.id}
-            ref={(el) => {
-              if (el) itemRefs.current.set(item.id, el);
-              else itemRefs.current.delete(item.id);
-            }}
-            style={
-              layoutReady && pos
-                ? {
-                    position: "absolute",
-                    top: pos.top,
-                    left: pos.left,
-                    width: pos.width,
-                    transition:
-                      "top 0.25s ease, left 0.25s ease, width 0.25s ease",
-                  }
-                : {
-                    // Phase 1: posizione naturale nella grid, span colonne
-                    gridColumn: `span ${span}`,
-                  }
-            }
-          >
+          <div key={item.id} ref={setRef} style={baseStyle}>
             {item.node}
           </div>
         );
