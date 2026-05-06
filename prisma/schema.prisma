@@ -51,6 +51,17 @@ model Account {
    *  creato). Usato per il banner "Friendly reminder" che invita l'utente a
    *  ricaricare CSV stale > 14 giorni. */
   lastCsvImportAt    DateTime?
+  /** Timestamp dell'ultimo manual edit del saldo (currentBalance set tramite
+   *  UI "Edit saldo"). Funziona da snapshot per-account: in modalità unfrozen
+   *  globale, displayBalance = currentBalance + sum(tx con confirmedAt > qui).
+   *  - Null su conti nuovi: comportamento "auto" — displayBalance = sum(all
+   *    confirmed tx) + currentBalance (di default 0). Ideale per utente che
+   *    importa CSV su conto fresco e si aspetta saldo subito.
+   *  - Set quando l'utente edita il saldo a mano: snapshot, le tx storiche
+   *    pre-edit non si ri-sommano (no double-count).
+   *  - Ortogonale a "Conti congelati" globale, che resta override forte: se
+   *    frozen=true, displayBalance = currentBalance regardless di questo. */
+  balanceLastEditedAt DateTime?
 
   transactions   Transaction[]
   balances       AccountBalance[]

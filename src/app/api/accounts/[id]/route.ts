@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { z } from "zod";
-import { getFreezeState, setFreezeState } from "@/lib/account-freeze";
 import { getProvidersForAccountType } from "@/lib/account-providers";
 
 export const runtime = "nodejs";
@@ -78,21 +77,9 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     closedAtUpdate.closedAt = null;
   }
 
-  // Bloccare la modifica manuale del saldo se i conti sono scongelati.
-  // L'utente deve esplicitamente passare in modalità "Congelati" prima di
-  // poter forzare un saldo a mano.
-  if (updates.currentBalance !== undefined) {
-    const { frozen } = await getFreezeState();
-    if (!frozen) {
-      return NextResponse.json(
-        {
-          error:
-            "I conti sono scongelati: i saldi si aggiornano automaticamente dai movimenti. Per modificare a mano un saldo passa prima in modalità Congelati dallo switch in /conti.",
-        },
-        { status: 409 },
-      );
-    }
-  }
+  // Manual edit del saldo: NON serve più passare in "Conti Congelati" globali.
+  // Il sistema usa balanceLastEditedAt per-account come snapshot anchor: dopo
+  // l'edit, le tx future contribuiscono live, quelle storiche pre-edit no.
 
   // Se il saldo cambia, crea un movimento di rettifica con categoria "Rettifica saldo" (🔧, type=transfer)
   let adjustmentTx: { id: string; amount: number } | null = null;
@@ -140,12 +127,17 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
     members !== undefined
       ? { membersJson: JSON.stringify(members.map((m) => ({ name: m.name.trim() }))) }
       : {};
+  // Quando il currentBalance cambia, aggiorna anche balanceLastEditedAt:
+  // questo è lo snapshot anchor per-account che evita il double-count delle
+  // tx pre-edit nel calcolo displayBalance.
+  const balanceAnchorUpdate =
+    updates.currentBalance !== undefined ? { balanceLastEditedAt: new Date() } : {};
   const updated = await prisma.account.update({
     where: { id },
-    data: { ...updates, ...closedAtUpdate, ...membersJsonUpdate },
+    data: { ...updates, ...closedAtUpdate, ...membersJsonUpdate, ...balanceAnchorUpdate },
   });
 
-  // Snapshot del saldo
+  // Snapshot del saldo (cronologia AccountBalance per chart history)
   if (updates.currentBalance !== undefined) {
     // Mezzanotte UTC del giorno corrente (locale): garantisce idempotenza
     // della @@unique(accountId,date) anche se l'utente cambia TZ tra una
@@ -159,12 +151,6 @@ export async function PATCH(req: NextRequest, ctx: { params: Promise<{ id: strin
         update: { balance: updates.currentBalance },
       })
       .catch(() => null);
-
-    // Aggiorna frozenAt = now: i conti restano congelati ma il punto di
-    // ancoraggio è il momento di questa modifica. Quando l'utente
-    // scongelerà, le tx considerate "live" saranno solo quelle dopo questo
-    // istante.
-    await setFreezeState(true, new Date());
   }
 
   // Sync paired Investment row when account is type=investment. Cambi a

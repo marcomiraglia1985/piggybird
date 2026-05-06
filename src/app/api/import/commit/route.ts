@@ -110,7 +110,10 @@ export async function POST(req: NextRequest) {
     }
 
     // Default: create — tx CSV import sono sempre confermate (è il senso
-    // dell'estratto conto bancario). confirmedAt = now così impattano il saldo.
+    // dell'estratto conto bancario). confirmedAt = data della tx (NON now()):
+    // se l'utente importa storico 2023, le tx avranno confirmedAt 2023, e la
+    // logica freeze/balanceLastEditedAt che filtra tx con `confirmedAt > anchor`
+    // saprà correttamente che sono PRECEDENTI all'anchor (no double-count).
     await prisma.transaction.create({
       data: {
         date,
@@ -121,7 +124,7 @@ export async function POST(req: NextRequest) {
         notes: r.notes ?? null,
         isJoint: r.isJoint ?? false,
         transferGroupId: tgid,
-        confirmedAt: new Date(),
+        confirmedAt: date,
         year: date.getFullYear(),
         month: date.getMonth() + 1,
       },

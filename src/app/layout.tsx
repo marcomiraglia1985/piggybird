@@ -11,6 +11,7 @@ import { getFreezeState } from "@/lib/account-freeze";
 import { prisma } from "@/lib/prisma";
 import { estateValueStatus } from "@/lib/estate-value";
 import { hasCompletedOnboarding } from "@/lib/user-profile";
+import { ensureDefaultBaseCategories } from "@/lib/seed-defaults";
 import { WelcomeOnboarding } from "@/components/welcome-onboarding";
 import { TelemetryRouterTracker } from "@/components/telemetry-router-tracker";
 import { SentryUserContext } from "@/components/sentry-user-context";
@@ -40,6 +41,8 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Seed categorie default al primo lancio (idempotente: skippa se già presenti)
+  await ensureDefaultBaseCategories();
   const { frozen: accountsFrozen } = await getFreezeState();
   // Conta gli immobili che hanno bisogno di una riconferma del valore
   // (alert sidebar accanto a "Estates" se >0).

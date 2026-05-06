@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { NewAccountForm } from "@/components/conti/new-account-form";
+import { getUserProfile } from "@/lib/user-profile";
+import { currencyFromCountry } from "@/lib/locale";
 
-export default function NewAccountPage() {
+export const dynamic = "force-dynamic";
+
+export default async function NewAccountPage() {
+  // Default currency dal primo paese del profilo utente. UK→GBP, CH→CHF, ecc.
+  const profile = await getUserProfile().catch(() => null);
+  const defaultCurrency = currencyFromCountry(profile?.countries?.[0] ?? null);
   return (
     <div className="space-y-6 max-w-2xl">
       <header>
@@ -17,7 +24,7 @@ export default function NewAccountPage() {
           Crea un nuovo conto. Apparirà nella tab Conti nella sezione del tipo scelto.
         </p>
       </header>
-      <NewAccountForm />
+      <NewAccountForm defaultCurrency={defaultCurrency} />
     </div>
   );
 }

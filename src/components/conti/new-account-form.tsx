@@ -19,7 +19,11 @@ const TYPES = [
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "ALL"];
 
-export function NewAccountForm() {
+export function NewAccountForm({
+  defaultCurrency = "EUR",
+}: {
+  defaultCurrency?: string;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const initialType = (() => {
@@ -29,7 +33,7 @@ export function NewAccountForm() {
   const [name, setName] = useState("");
   const [type, setType] = useState<(typeof TYPES)[number]["value"]>(initialType);
   const [provider, setProvider] = useState<string>("generic");
-  const [currency, setCurrency] = useState("EUR");
+  const [currency, setCurrency] = useState(defaultCurrency);
   const [emoji, setEmoji] = useState("");
   const [ownership, setOwnership] = useState("1");
   const [balance, setBalance] = useState("0");

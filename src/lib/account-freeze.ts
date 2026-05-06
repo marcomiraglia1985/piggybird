@@ -12,16 +12,22 @@ export type FreezeState = {
 
 /**
  * Stato globale di "congelamento" dei saldi conto.
- * Default: frozen=true (legacy behavior — saldi statici, l'utente li imposta a mano).
- * Quando frozen=false, i saldi mostrati = currentBalance + tx confermate dopo frozenAt.
+ *
+ * Default: frozen=false (auto-live mode — saldi derivati dalle tx). Solo
+ * "true" esplicito attiva il freeze globale, usato per riconciliare saldi
+ * a bocce ferme dopo import storico massiccio (modello: Marco).
+ *
+ * Per il caso comune (utente edita un singolo saldo a mano), NON serve
+ * congelare globalmente: si usa Account.balanceLastEditedAt come snapshot
+ * per-account.
  */
 export async function getFreezeState(): Promise<FreezeState> {
   const [f, fAt] = await Promise.all([
     prisma.setting.findUnique({ where: { key: FROZEN_KEY } }),
     prisma.setting.findUnique({ where: { key: FROZEN_AT_KEY } }),
   ]);
-  // Default: frozen=true (sicuro). Solo "false" esplicito sblocca.
-  const frozen = f?.value !== "false";
+  // Default: frozen=false (auto-live). Solo "true" esplicito congela.
+  const frozen = f?.value === "true";
   let frozenAt: Date | null = null;
   if (fAt?.value) {
     const d = new Date(fAt.value);
@@ -46,22 +52,33 @@ export async function setFreezeState(frozen: boolean, frozenAt?: Date): Promise<
 }
 
 /**
- * Calcola il saldo "display" per ogni account.
- * - Frozen → currentBalance così com'è (statico).
- * - Unfrozen → currentBalance + sum(tx confermate con date > frozenAt e ≤ now).
- *   Le tx future (>now) NON contribuiscono al saldo attuale.
+ * Calcola il saldo "display" per ogni account. Logica 3-rami:
  *
- * Eccezione friendsplit: ignora freeze + confirmed e usa sempre `sum(tx.amount)`
- * di tutte le tx del conto. /friendsplit page è la source of truth ed usa
- * questo calcolo. Manteniamo coerenza qui per evitare divergenze con /conti.
- * (Il POST /api/transactions/friendsplit non aggiorna currentBalance, quindi
- * è cronicamente stale.)
+ *   1. **Frozen globale ON** (Marco's reconcile mode): displayBalance =
+ *      currentBalance per tutti i conti. Override forte per chi sta sistemando
+ *      i saldi a bocce ferme dopo un import storico massiccio.
+ *   2. **Unfrozen + balanceLastEditedAt set** (manual override per-account):
+ *      l'utente ha cliccato "Edit saldo" → quel saldo è uno snapshot.
+ *      displayBalance = currentBalance + sum(tx con confirmedAt > balanceLastEditedAt).
+ *      Le tx storiche pre-edit NON si ri-sommano (no double-count).
+ *   3. **Unfrozen + balanceLastEditedAt null** (auto-live, default nuovi conti):
+ *      displayBalance = currentBalance + sum(all confirmed tx).
+ *      Caso tipico: nuovo utente crea conto, importa CSV, vede subito il saldo
+ *      derivato dalle tx senza toccare nulla.
+ *
+ * Eccezione friendsplit: ignora tutto, sempre sum di TUTTE le tx
+ * (`/friendsplit` page è la source of truth).
  */
 export async function getDisplayBalances<
-  T extends { id: string; currentBalance: number; type: string },
+  T extends {
+    id: string;
+    currentBalance: number;
+    type: string;
+    balanceLastEditedAt?: Date | null;
+  },
 >(accounts: T[]): Promise<(T & { displayBalance: number })[]> {
   if (accounts.length === 0) return [];
-  const { frozen, frozenAt } = await getFreezeState();
+  const { frozen } = await getFreezeState();
 
   // Friendsplit: sum di TUTTE le tx (ignora freeze, ignora confirmed)
   const fsIds = accounts.filter((a) => a.type === "friendsplit").map((a) => a.id);
@@ -74,14 +91,30 @@ export async function getDisplayBalances<
     });
     for (const r of rows) fsSums.set(r.accountId, r._sum.amount ?? 0);
   }
-
   const fsBalance = (id: string) => fsSums.get(id) ?? 0;
 
-  // SEMPRE pre-calcoliamo la somma totale confirmed-tx per ogni account
-  // non-friendsplit. Serve a 2 cose:
-  //   1) rilevare conti "vergini" (currentBalance=0 con tx) → display = sum
-  //   2) calcolare displayBalance in modalità unfrozen
-  const nonFsIds = accounts.filter((a) => a.type !== "friendsplit").map((a) => a.id);
+  // Investment accounts: currentBalance è auto-recalcolato da
+  // recalcInvestmentBalances() al sum(tx). Già authoritative, non sommarci
+  // di nuovo. Helper:
+  const isInvestmentAuto = (type: string) => type === "investment";
+
+  // RAMO 1: frozen globale → snapshot statico
+  if (frozen) {
+    return accounts.map((a) => ({
+      ...a,
+      displayBalance:
+        a.type === "friendsplit" ? fsBalance(a.id) : a.currentBalance,
+    }));
+  }
+
+  // RAMI 2 + 3 — unfrozen. Pre-calcolo somme tx in due tagli:
+  //   - totalSum: sum(all confirmed tx) per ramo 3 (auto-live)
+  //   - perAnchorSum: sum(tx after balanceLastEditedAt) per ramo 2 (manual)
+  // Una singola query coprirebbe entrambi se usiamo confirmedAt sempre, ma è
+  // più chiaro avere due path separati.
+  const nonFsIds = accounts
+    .filter((a) => a.type !== "friendsplit")
+    .map((a) => a.id);
   const totalSumMap = new Map<string, number>();
   if (nonFsIds.length > 0) {
     const sums = await prisma.transaction.groupBy({
@@ -92,54 +125,43 @@ export async function getDisplayBalances<
     for (const r of sums) totalSumMap.set(r.accountId, r._sum.amount ?? 0);
   }
 
-  // Override universale per conti "vergini": currentBalance=0 ma esistono tx
-  // confermate. Caso tipico: nuovo utente che crea conto N26, importa CSV,
-  // e si aspetta di vedere il saldo live senza dover impostare il balance
-  // manualmente. Per design currentBalance NON viene aggiornato all'import
-  // (è "manuale") — questo override copre il caso utente naive.
-  function freshAccountBalance<U extends { type: string; currentBalance: number; id: string }>(
-    a: U,
-  ): number | null {
-    if (a.type === "friendsplit") return null;
-    if (a.currentBalance !== 0) return null;
-    const sum = totalSumMap.get(a.id) ?? 0;
-    return sum !== 0 ? sum : null;
-  }
-
-  if (frozen || !frozenAt) {
-    return accounts.map((a) => {
-      if (a.type === "friendsplit") {
-        return { ...a, displayBalance: fsBalance(a.id) };
-      }
-      const fresh = freshAccountBalance(a);
-      return { ...a, displayBalance: fresh ?? a.currentBalance };
-    });
-  }
-
-  const sumMap = new Map<string, number>();
-  if (nonFsIds.length > 0) {
-    const sums = await prisma.transaction.groupBy({
-      by: ["accountId"],
+  // Per gli account con balanceLastEditedAt set: query separata con filtro
+  // confirmedAt. Una query per account, OK perché il numero di account è
+  // tipicamente <20.
+  const perAnchorSumMap = new Map<string, number>();
+  for (const a of accounts) {
+    if (a.type === "friendsplit") continue;
+    if (!a.balanceLastEditedAt) continue;
+    const r = await prisma.transaction.aggregate({
       where: {
-        accountId: { in: nonFsIds },
+        accountId: a.id,
         confirmed: true,
-        confirmedAt: { gt: frozenAt },
+        confirmedAt: { gt: a.balanceLastEditedAt },
       },
       _sum: { amount: true },
     });
-    for (const r of sums) sumMap.set(r.accountId, r._sum.amount ?? 0);
+    perAnchorSumMap.set(a.id, r._sum.amount ?? 0);
   }
+
   return accounts.map((a) => {
     if (a.type === "friendsplit") {
       return { ...a, displayBalance: fsBalance(a.id) };
     }
-    // Override fresh-account anche in modalità unfrozen (caso più comune
-    // per utenti nuovi che non hanno mai toccato il toggle freeze)
-    const fresh = freshAccountBalance(a);
-    if (fresh != null) return { ...a, displayBalance: fresh };
+    if (isInvestmentAuto(a.type)) {
+      // currentBalance è già la somma autoritativa delle tx (auto-recalc)
+      return { ...a, displayBalance: a.currentBalance };
+    }
+    if (a.balanceLastEditedAt) {
+      // Ramo 2: manual override per-account
+      return {
+        ...a,
+        displayBalance: a.currentBalance + (perAnchorSumMap.get(a.id) ?? 0),
+      };
+    }
+    // Ramo 3: auto-live (nuovo conto o reset to auto)
     return {
       ...a,
-      displayBalance: a.currentBalance + (sumMap.get(a.id) ?? 0),
+      displayBalance: a.currentBalance + (totalSumMap.get(a.id) ?? 0),
     };
   });
 }

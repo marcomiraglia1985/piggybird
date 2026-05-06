@@ -58,3 +58,39 @@ export function localeFromCountry(country: string | null | undefined): string {
   if (!country) return DEFAULT_LOCALE;
   return COUNTRY_TO_LOCALE[country.toUpperCase()] ?? DEFAULT_LOCALE;
 }
+
+/**
+ * Currency probabile per paese / nome del paese (italiano o inglese o codice).
+ * Usato come default ragionevole in form di create account: utente UK vede
+ * GBP pre-selezionato invece di EUR. Niente di più di un suggerimento — l'UI
+ * lascia la scelta libera nella select.
+ */
+const COUNTRY_TO_CURRENCY: Record<string, string> = {
+  // Eurozona — EUR
+  IT: "EUR", ITALIA: "EUR", ITALY: "EUR",
+  FR: "EUR", FRANCIA: "EUR", FRANCE: "EUR",
+  DE: "EUR", GERMANIA: "EUR", GERMANY: "EUR",
+  ES: "EUR", SPAGNA: "EUR", SPAIN: "EUR",
+  PT: "EUR", PORTOGALLO: "EUR", PORTUGAL: "EUR",
+  NL: "EUR", PAESI_BASSI: "EUR", NETHERLANDS: "EUR",
+  BE: "EUR", BELGIO: "EUR", BELGIUM: "EUR",
+  AT: "EUR", AUSTRIA: "EUR",
+  IE: "EUR", IRLANDA: "EUR", IRELAND: "EUR",
+  GR: "EUR", GRECIA: "EUR", GREECE: "EUR",
+  // Non-EUR
+  GB: "GBP", REGNO_UNITO: "GBP", "REGNO UNITO": "GBP", UK: "GBP", "UNITED KINGDOM": "GBP",
+  US: "USD", USA: "USD", "STATI UNITI": "USD", "UNITED STATES": "USD",
+  CH: "CHF", SVIZZERA: "CHF", SWITZERLAND: "CHF",
+  AL: "ALL", ALBANIA: "ALL",
+  PL: "PLN", POLONIA: "PLN", POLAND: "PLN",
+  CZ: "CZK",
+  SE: "SEK", SVEZIA: "SEK", SWEDEN: "SEK",
+  DK: "DKK",
+  NO: "NOK",
+};
+
+export function currencyFromCountry(country: string | null | undefined): string {
+  if (!country) return "EUR";
+  const key = country.trim().toUpperCase().replace(/\s+/g, "_");
+  return COUNTRY_TO_CURRENCY[key] ?? "EUR";
+}
