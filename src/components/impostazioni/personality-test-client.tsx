@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -1097,8 +1097,10 @@ function ResultStage({
 }) {
   const archetype = profile.archetype;
   const finalStats = stats.length > 0 ? stats : loadedStats;
-  // Auto-load stats al mount se profile completed senza ancora avere stats
-  useMemo(() => {
+  // Auto-load stats al mount se profile completed senza ancora avere stats.
+  // DEVE essere useEffect, NON useMemo: useMemo gira anche in SSR e qui c'è
+  // un fetch a URL relativo che fallisce server-side ("Failed to parse URL").
+  useEffect(() => {
     if (profile.completed && finalStats.length === 0) onLoadStats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.completed]);

@@ -77,15 +77,45 @@ export async function getDisplayBalances<
 
   const fsBalance = (id: string) => fsSums.get(id) ?? 0;
 
-  if (frozen || !frozenAt) {
-    return accounts.map((a) => ({
-      ...a,
-      displayBalance:
-        a.type === "friendsplit" ? fsBalance(a.id) : a.currentBalance,
-    }));
+  // SEMPRE pre-calcoliamo la somma totale confirmed-tx per ogni account
+  // non-friendsplit. Serve a 2 cose:
+  //   1) rilevare conti "vergini" (currentBalance=0 con tx) → display = sum
+  //   2) calcolare displayBalance in modalità unfrozen
+  const nonFsIds = accounts.filter((a) => a.type !== "friendsplit").map((a) => a.id);
+  const totalSumMap = new Map<string, number>();
+  if (nonFsIds.length > 0) {
+    const sums = await prisma.transaction.groupBy({
+      by: ["accountId"],
+      where: { accountId: { in: nonFsIds }, confirmed: true },
+      _sum: { amount: true },
+    });
+    for (const r of sums) totalSumMap.set(r.accountId, r._sum.amount ?? 0);
   }
 
-  const nonFsIds = accounts.filter((a) => a.type !== "friendsplit").map((a) => a.id);
+  // Override universale per conti "vergini": currentBalance=0 ma esistono tx
+  // confermate. Caso tipico: nuovo utente che crea conto N26, importa CSV,
+  // e si aspetta di vedere il saldo live senza dover impostare il balance
+  // manualmente. Per design currentBalance NON viene aggiornato all'import
+  // (è "manuale") — questo override copre il caso utente naive.
+  function freshAccountBalance<U extends { type: string; currentBalance: number; id: string }>(
+    a: U,
+  ): number | null {
+    if (a.type === "friendsplit") return null;
+    if (a.currentBalance !== 0) return null;
+    const sum = totalSumMap.get(a.id) ?? 0;
+    return sum !== 0 ? sum : null;
+  }
+
+  if (frozen || !frozenAt) {
+    return accounts.map((a) => {
+      if (a.type === "friendsplit") {
+        return { ...a, displayBalance: fsBalance(a.id) };
+      }
+      const fresh = freshAccountBalance(a);
+      return { ...a, displayBalance: fresh ?? a.currentBalance };
+    });
+  }
+
   const sumMap = new Map<string, number>();
   if (nonFsIds.length > 0) {
     const sums = await prisma.transaction.groupBy({
@@ -99,13 +129,19 @@ export async function getDisplayBalances<
     });
     for (const r of sums) sumMap.set(r.accountId, r._sum.amount ?? 0);
   }
-  return accounts.map((a) => ({
-    ...a,
-    displayBalance:
-      a.type === "friendsplit"
-        ? fsBalance(a.id)
-        : a.currentBalance + (sumMap.get(a.id) ?? 0),
-  }));
+  return accounts.map((a) => {
+    if (a.type === "friendsplit") {
+      return { ...a, displayBalance: fsBalance(a.id) };
+    }
+    // Override fresh-account anche in modalità unfrozen (caso più comune
+    // per utenti nuovi che non hanno mai toccato il toggle freeze)
+    const fresh = freshAccountBalance(a);
+    if (fresh != null) return { ...a, displayBalance: fresh };
+    return {
+      ...a,
+      displayBalance: a.currentBalance + (sumMap.get(a.id) ?? 0),
+    };
+  });
 }
 
 /**

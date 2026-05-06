@@ -24,7 +24,6 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Columns2, Columns3, Square, X, Plus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { MasonryGrid } from "./masonry-grid";
 
 const PLACEMENT_KEY = "fp-dashboard-placement-v2";
 const COLS_KEY = "fp-dashboard-cols";
@@ -477,34 +476,53 @@ export function DashboardGrid({
   const isEditing = mounted && !locked;
 
   // ----- Static (locked / pre-mount) -----
+  // Stesso rendering di edit mode (wide zone in alto + cols zone sotto): così
+  // il toggle Edit non causa salti. Niente più MasonryGrid auto-packing che
+  // muoveva le card di colonna a piacere — l'utente vuole column-stable.
   const staticView = (() => {
     const hasWide = visibleP.wide.length > 0;
     const hasCols = visibleP.cols.some((col) => col.length > 0);
-    // True masonry: i widget narrow "salgono" a riempire lo spazio vuoto
-    // SOPRA di loro (impossibile con CSS grid puro cross-browser).
-    // Implementato in JS via <MasonryGrid>: misura altezze + position absolute
-    // + ResizeObserver per re-layout quando contenuto cambia.
-    // Ordine items: prima wide, poi cols flatten row-by-row.
-    const masonryItems: { id: string; span: number; node: React.ReactNode }[] = [];
-    for (const id of visibleP.wide) {
-      const card = cardMap.get(id);
-      if (!card) continue;
-      masonryItems.push({ id, span: getCardSpan(card), node: card.node });
-    }
-    const maxColLen = Math.max(0, ...visibleP.cols.map((c) => c.length));
-    for (let row = 0; row < maxColLen; row++) {
-      for (let c = 0; c < visibleP.cols.length; c++) {
-        const id = visibleP.cols[c]?.[row];
-        if (!id) continue;
-        const card = cardMap.get(id);
-        if (!card) continue;
-        masonryItems.push({ id, span: getCardSpan(card), node: card.node });
-      }
-    }
     return (
       <div className="space-y-6">
-        {(hasWide || hasCols) && (
-          <MasonryGrid items={masonryItems} cols={cols} gap={24} />
+        {hasWide && (
+          <div
+            className="grid gap-6"
+            style={{
+              gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
+              gridAutoFlow: "row",
+            }}
+          >
+            {visibleP.wide.map((id) => {
+              const card = cardMap.get(id);
+              if (!card) return null;
+              const span = getCardSpan(card);
+              return (
+                <div
+                  key={id}
+                  style={{ gridColumn: `span ${span}` }}
+                  className="min-w-0"
+                >
+                  {card.node}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        {hasCols && (
+          <div
+            className="grid gap-6 items-start"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          >
+            {visibleP.cols.map((col, idx) => (
+              <div key={idx} className="flex flex-col gap-6 min-w-0">
+                {col.map((id) => {
+                  const card = cardMap.get(id);
+                  if (!card) return null;
+                  return <div key={id}>{card.node}</div>;
+                })}
+              </div>
+            ))}
+          </div>
         )}
       </div>
     );
@@ -532,14 +550,16 @@ export function DashboardGrid({
         onDragCancel={() => setIsDragging(false)}
       >
         <div className="space-y-6">
-          {/* Wide zone (CSS grid auto-flow row dense) */}
+          {/* Wide zone (CSS grid auto-flow row, NO dense): preservare l'ordine
+              utente. "dense" causerebbe shuffle automatico in edit mode → fix
+              audit 2026-05-06. */}
           <DroppableContainer id={WIDE} isDragging={isDragging} className="min-h-[40px]">
             <SortableContext items={visibleP.wide} strategy={rectSortingStrategy}>
               <div
                 className="grid gap-6"
                 style={{
                   gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))`,
-                  gridAutoFlow: "row dense",
+                  gridAutoFlow: "row",
                 }}
               >
                 {visibleP.wide.map((id) => {
