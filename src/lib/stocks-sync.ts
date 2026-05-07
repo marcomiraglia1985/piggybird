@@ -19,17 +19,28 @@ export async function syncStocksTotal(platform: string) {
     .reduce((s, p) => s + p.shares * p.currentPrice * p.fxToEur, 0);
   const cashValue = cashRows.reduce((s, c) => s + c.amount * c.fxToEur, 0);
   const total = positionsValue + cashValue; // stocks/etf + cash, escluso materie prime
-  const investmentName = `Stocks ${platform}`;
-  const existing = await prisma.investment.findUnique({ where: { name: investmentName } });
-  if (existing) {
+  // Lookup tollerante (universal-app + legacy), come binance/sync:
+  //  1. name === platform (universal-app: Investment.name = nome conto utente)
+  //  2. name === "Stocks {platform}" (legacy nomenclatura pre-universal)
+  // Se entrambi esistono per stesso platform è un BUG storico → conserviamo
+  // il primo trovato e cancelliamo l'altro per non inflazionare i totali.
+  const universal = await prisma.investment.findFirst({ where: { name: platform } });
+  const legacy = await prisma.investment.findFirst({
+    where: { name: `Stocks ${platform}` },
+  });
+  const target = universal ?? legacy;
+  if (universal && legacy && universal.id !== legacy.id) {
+    await prisma.investment.delete({ where: { id: legacy.id } });
+  }
+  if (target) {
     await prisma.investment.update({
-      where: { id: existing.id },
-      data: { currentValue: total, lastUpdated: new Date() },
+      where: { id: target.id },
+      data: { name: platform, platform, currentValue: total, lastUpdated: new Date() },
     });
   } else {
     await prisma.investment.create({
       data: {
-        name: investmentName,
+        name: platform,
         type: "stocks",
         platform,
         currentValue: total,
