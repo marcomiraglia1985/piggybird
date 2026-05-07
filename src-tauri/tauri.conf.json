@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Piggybird",
-  "version": "0.5.11",
+  "version": "0.5.12",
   "identifier": "app.piggybird",
   "build": {
     "beforeBuildCommand": "tools/tauri-prebuild.sh",

@@ -37,7 +37,39 @@ export async function syncStocksTotal(platform: string) {
       },
     });
   }
+
+  // Allinea Account.currentBalance del conto matchato (vedi binance/sync per
+  // razionale + politica multi-account). Senza questo update, il widget
+  // dashboard del conto stocks resta a 0 mentre il totale Investimenti è ok.
+  // Il provider name è derivato dal platform (es. "Revolut Trading" → cerca
+  // conti con provider="revolut-x" o name match).
+  const accounts = await prisma.account.findMany({
+    where: {
+      active: true,
+      OR: [{ name: platform }, { provider: platformToProvider(platform) }],
+    },
+    select: { id: true, name: true },
+  });
+  if (accounts.length === 1) {
+    await prisma.account.update({
+      where: { id: accounts[0].id },
+      data: { currentBalance: total },
+    });
+  } else if (accounts.length > 1) {
+    console.warn(
+      `[stocks-sync] ${accounts.length} conti matchano platform=${platform}: saldo non aggiornato (mapping ambiguo). Names: ${accounts.map((a) => a.name).join(", ")}`,
+    );
+  }
+
   return total;
+}
+
+/** Map del nome platform al provider key per il lookup Account. */
+function platformToProvider(platform: string): string {
+  const lower = platform.toLowerCase();
+  if (lower.includes("revolut")) return "revolut-x";
+  if (lower.includes("binance")) return "binance";
+  return platform;
 }
 
 /** Refresh prezzi live di tutte le posizioni di un platform.

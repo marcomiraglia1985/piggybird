@@ -232,11 +232,12 @@ async function trackToBackend(
 }
 
 export async function resetPersonality(): Promise<void> {
-  await Promise.all(
-    Object.values(KEYS).map((k) =>
-      prisma.setting.delete({ where: { key: k } }).catch(() => null),
-    ),
-  );
+  // deleteMany è atomico e non solleva su record assenti (a differenza di
+  // delete + .catch). Se DB lock o altro errore reale, il caller riceve
+  // l'errore invece di un reset silente parziale.
+  await prisma.setting.deleteMany({
+    where: { key: { in: Object.values(KEYS) } },
+  });
 }
 
 /**

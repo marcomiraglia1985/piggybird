@@ -5,6 +5,7 @@ import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArchiveRestore, Trash2, X, AlertTriangle } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 export function ClosedAccountActions({
   accountId,
@@ -16,6 +17,7 @@ export function ClosedAccountActions({
   txCount: number;
 }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -30,7 +32,23 @@ export function ClosedAccountActions({
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ active: true }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast({ title: "Conto riaperto", variant: "success" });
+        router.refresh();
+      } else {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast({
+          title: "Errore riapertura",
+          description: j?.error ?? `HTTP ${res.status}`,
+          variant: "error",
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "Errore riapertura",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "error",
+      });
     } finally {
       setBusy(false);
     }
@@ -43,8 +61,22 @@ export function ClosedAccountActions({
       const res = await fetch(`/api/accounts/${accountId}`, { method: "DELETE" });
       if (res.ok) {
         setDeleteOpen(false);
+        toast({ title: "Conto cancellato", variant: "success" });
         router.refresh();
+      } else {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast({
+          title: "Errore cancellazione",
+          description: j?.error ?? `HTTP ${res.status}`,
+          variant: "error",
+        });
       }
+    } catch (e) {
+      toast({
+        title: "Errore cancellazione",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "error",
+      });
     } finally {
       setBusy(false);
     }

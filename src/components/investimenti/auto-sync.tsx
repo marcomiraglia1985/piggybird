@@ -28,6 +28,7 @@ export function InvestmentsAutoSync() {
   const [syncing, setSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
   const [errored, setErrored] = useState(false);
+  const [errorDetails, setErrorDetails] = useState<string | null>(null);
   const lastSyncRef = useRef<number>(0);
   const enabledRef = useRef(true);
 
@@ -46,17 +47,42 @@ export function InvestmentsAutoSync() {
     if (syncing) return;
     setSyncing(true);
     setErrored(false);
+    setErrorDetails(null);
     try {
       const results = await Promise.allSettled(
-        TARGETS.map((t) => fetch(t.url, { method: "POST" }).then((r) => r.ok)),
+        TARGETS.map(async (t) => {
+          const r = await fetch(t.url, { method: "POST" });
+          if (r.ok) return { label: t.label, ok: true as const };
+          const j = (await r.json().catch(() => null)) as { error?: string } | null;
+          return {
+            label: t.label,
+            ok: false as const,
+            error: j?.error ?? `HTTP ${r.status}`,
+          };
+        }),
       );
-      const allOk = results.every((r) => r.status === "fulfilled" && r.value);
-      setErrored(!allOk);
+      const failures: { label: string; error: string }[] = [];
+      for (const r of results) {
+        if (r.status === "rejected") {
+          failures.push({ label: "?", error: String(r.reason) });
+        } else if (!r.value.ok) {
+          failures.push({ label: r.value.label, error: r.value.error });
+        }
+      }
+      if (failures.length > 0) {
+        setErrored(true);
+        setErrorDetails(
+          failures.map((f) => `${f.label}: ${f.error}`).join(" · "),
+        );
+        console.warn("[auto-sync] failures:", failures);
+      }
       lastSyncRef.current = Date.now();
       setLastSync(new Date());
       router.refresh();
-    } catch {
+    } catch (e) {
       setErrored(true);
+      setErrorDetails(e instanceof Error ? e.message : "errore sconosciuto");
+      console.error("[auto-sync] outer error:", e);
     } finally {
       setSyncing(false);
     }
@@ -134,7 +160,13 @@ export function InvestmentsAutoSync() {
     <button
       type="button"
       onClick={toggle}
-      title={enabled ? "Disabilita auto-sync" : "Abilita auto-sync"}
+      title={
+        errored && errorDetails
+          ? `Errore: ${errorDetails}`
+          : enabled
+            ? "Disabilita auto-sync"
+            : "Abilita auto-sync"
+      }
       className={cn(
         "group inline-flex items-center gap-2 h-9 pl-2.5 pr-2 rounded-lg text-xs font-medium border transition-colors",
         styles.pill,

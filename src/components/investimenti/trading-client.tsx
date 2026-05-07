@@ -6,6 +6,7 @@ import { Trash2, AlertTriangle, Pencil, BarChart3 } from "lucide-react";
 import { AssetChartModal } from "@/components/investimenti/asset-chart-modal";
 import { formatEUR, cn } from "@/lib/utils";
 import { useConfirm } from "@/components/ui/confirm-dialog";
+import { useToast } from "@/components/ui/toast";
 
 type Position = {
   id: string;
@@ -114,6 +115,7 @@ export function TradingClient({ positions }: { positions: Position[] }) {
 
 function PositionRow({ p, onChanged }: { p: Position; onChanged: () => void }) {
   const confirm = useConfirm();
+  const { toast } = useToast();
   const [editing, setEditing] = useState(false);
   const [chartOpen, setChartOpen] = useState(false);
   const [shares, setShares] = useState(p.shares.toString());
@@ -131,9 +133,19 @@ function PositionRow({ p, onChanged }: { p: Position; onChanged: () => void }) {
           avgCost: avgCost ? parseFloat(avgCost) : null,
         }),
       });
-      if (!res.ok) throw new Error("save failed");
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      }
+      toast({ title: `${p.ticker} aggiornato`, variant: "success" });
       setEditing(false);
       onChanged();
+    } catch (e) {
+      toast({
+        title: "Errore salvataggio",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "error",
+      });
     } finally {
       setSaving(false);
     }
@@ -141,8 +153,23 @@ function PositionRow({ p, onChanged }: { p: Position; onChanged: () => void }) {
 
   async function remove() {
     if (!(await confirm({ title: `Rimuovere ${p.ticker}?`, confirmLabel: "Rimuovi", variant: "danger" }))) return;
-    await fetch(`/api/integrations/stocks/${p.id}`, { method: "DELETE" });
-    onChanged();
+    try {
+      const res = await fetch(`/api/integrations/stocks/${p.id}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(j?.error ?? `HTTP ${res.status}`);
+      }
+      toast({ title: `${p.ticker} rimosso`, variant: "success" });
+      onChanged();
+    } catch (e) {
+      toast({
+        title: "Errore rimozione",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "error",
+      });
+    }
   }
 
   const formatShares = p.assetType === "metal"

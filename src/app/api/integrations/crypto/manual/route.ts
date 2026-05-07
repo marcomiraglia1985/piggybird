@@ -54,26 +54,45 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, position });
 }
 
-/** Aggrega tutte le posizioni di un platform in Investment (per il dashboard). */
+/** Aggrega tutte le posizioni di un platform in Investment (per il dashboard).
+ *  Allinea anche `Account.currentBalance` del conto matchato per evitare
+ *  divergenza tra widget dashboard e totale Investimenti (vedi binance/sync). */
 async function syncCryptoInvestmentTotal(platform: string) {
   const positions = await prisma.cryptoPosition.findMany({ where: { platform } });
   const total = positions.reduce((s, p) => s + p.eurValue, 0);
   const investmentName = `Crypto ${platform}`;
   if (total === 0) {
     await prisma.investment.deleteMany({ where: { name: investmentName } });
-    return;
+  } else {
+    await prisma.investment.upsert({
+      where: { name: investmentName },
+      update: { currentValue: total, lastUpdated: new Date() },
+      create: {
+        name: investmentName,
+        type: "crypto",
+        platform,
+        currentValue: total,
+        currency: "EUR",
+      },
+    });
   }
-  await prisma.investment.upsert({
-    where: { name: investmentName },
-    update: { currentValue: total, lastUpdated: new Date() },
-    create: {
-      name: investmentName,
-      type: "crypto",
-      platform,
-      currentValue: total,
-      currency: "EUR",
-    },
+
+  // Allinea Account.currentBalance del conto matchato (politica multi-account:
+  // update solo se 1 conto attivo, altrimenti skip + warn).
+  const accounts = await prisma.account.findMany({
+    where: { active: true, name: platform },
+    select: { id: true, name: true },
   });
+  if (accounts.length === 1) {
+    await prisma.account.update({
+      where: { id: accounts[0].id },
+      data: { currentBalance: total },
+    });
+  } else if (accounts.length > 1) {
+    console.warn(
+      `[crypto/manual] ${accounts.length} conti matchano ${platform}: saldo non aggiornato. Names: ${accounts.map((a) => a.name).join(", ")}`,
+    );
+  }
 }
 
 export async function DELETE(req: NextRequest) {

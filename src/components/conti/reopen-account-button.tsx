@@ -3,9 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArchiveRestore } from "lucide-react";
+import { useToast } from "@/components/ui/toast";
 
 export function ReopenAccountButton({ accountId }: { accountId: string }) {
   const router = useRouter();
+  const { toast } = useToast();
   const [busy, setBusy] = useState(false);
 
   async function reopen() {
@@ -17,7 +19,23 @@ export function ReopenAccountButton({ accountId }: { accountId: string }) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ active: true }),
       });
-      if (res.ok) router.refresh();
+      if (res.ok) {
+        toast({ title: "Conto riaperto", variant: "success" });
+        router.refresh();
+      } else {
+        const j = (await res.json().catch(() => null)) as { error?: string } | null;
+        toast({
+          title: "Errore riapertura",
+          description: j?.error ?? `HTTP ${res.status}`,
+          variant: "error",
+        });
+      }
+    } catch (e) {
+      toast({
+        title: "Errore riapertura",
+        description: e instanceof Error ? e.message : undefined,
+        variant: "error",
+      });
     } finally {
       setBusy(false);
     }

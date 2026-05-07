@@ -139,13 +139,12 @@ export async function getInvestmentsGain() {
     // Senza il check ≤0, un Investment con costEur=0 (corruzione DB o
     // utente che ha azzerato manualmente) inquinerebbe il totale di gain.
     if (inv.costEur == null || inv.costEur <= 0) continue;
-    const hasCryptoBreakdown =
-      inv.type === "crypto" &&
-      cryptoCostBases.some((c) => c.platform === inv.platform);
-    if (hasCryptoBreakdown) continue;
-    const hasStockBreakdown =
-      inv.type === "stocks" && stockPositions.some((p) => p.platform === inv.platform);
-    if (hasStockBreakdown) continue;
+    // NOTA: Investment.costEur ora rappresenta il BASELINE pre-API e si SOMMA
+    // sempre al per-asset breakdown (CryptoCostBasis / StockPosition.avgCost),
+    // mai uno o l'altro. Allineato col modello in `crypto-platform-view.tsx`
+    // (totalCost = baseline + entryFromTrades). In passato saltavamo costEur
+    // quando esisteva un breakdown — pattern legacy che ignorava i baseline
+    // pre-API per chi ha mixed history (asset pre-broker + trade nuovi).
     investmentLevelCost += inv.costEur;
     investmentLevelValue += inv.currentValue;
   }

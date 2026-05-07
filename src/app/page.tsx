@@ -140,6 +140,8 @@ export default async function Dashboard() {
         emoji: e.emoji,
         currentValue: status.value,
         isFallback: status.isFallback,
+        needsAlert: status.needsAlert,
+        ageDays: status.ageDays,
         purchasePrice: e.purchasePrice as number,
         purchaseDateIso: (e.purchaseDate as Date).toISOString(),
         ownershipShare: e.ownershipShare,

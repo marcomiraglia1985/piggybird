@@ -14,6 +14,10 @@ type EstateRow = {
   currentValue: number;
   /** True se currentValue è un fallback dal purchasePrice. */
   isFallback: boolean;
+  /** True se il valore è obsoleto (>5 anni senza aggiornamento o mai impostato). */
+  needsAlert: boolean;
+  /** Età in giorni dell'ultimo aggiornamento. null se non calcolabile. */
+  ageDays: number | null;
   purchasePrice: number;
   purchaseDateIso: string;
   ownershipShare: number;
@@ -184,6 +188,18 @@ function EstateRow({
                   title="Valore non aggiornato — uso il prezzo d'acquisto come stima"
                 >
                   · stima
+                </span>
+              )}
+              {row.needsAlert && !row.isFallback && (
+                <span
+                  className="ml-1 text-amber-400/80"
+                  title={
+                    row.ageDays != null
+                      ? `Valore non aggiornato da ${Math.floor(row.ageDays / 365)} anni — verifica se è ancora attuale`
+                      : "Valore obsoleto — verifica se è ancora attuale"
+                  }
+                >
+                  · obsoleto
                 </span>
               )}
             </div>

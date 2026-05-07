@@ -1,6 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { prisma } from "./prisma";
-import { decrypt, encrypt } from "./crypto";
+import { decrypt, encrypt, ensureMasterKey } from "./crypto";
 import {
   AI_MODELS,
   computeCallCostEur,
@@ -59,6 +59,7 @@ export type ClaudeCallResult = {
 const DECRYPT_FAILED_MARKER = "__DECRYPT_FAILED__";
 
 async function getApiKey(): Promise<string | null> {
+  await ensureMasterKey();
   const cred = await prisma.apiCredential.findUnique({
     where: { provider: PROVIDER_KEY },
   });
@@ -86,6 +87,7 @@ export async function hasAnthropicCredential(): Promise<boolean> {
 
 /** Salva (o aggiorna) la API key Anthropic, cifrata. */
 export async function saveAnthropicCredential(apiKey: string): Promise<void> {
+  await ensureMasterKey();
   const enc = encrypt(apiKey);
   const hint = apiKey.length > 8 ? `…${apiKey.slice(-4)}` : "set";
   await prisma.apiCredential.upsert({

@@ -84,7 +84,15 @@ export async function getCredentialStatus(provider: string) {
 }
 
 export async function deleteCredential(provider: string) {
-  await prisma.apiCredential.delete({ where: { provider } }).catch(() => null);
+  try {
+    await prisma.apiCredential.delete({ where: { provider } });
+  } catch (e) {
+    // P2025 = "Record to delete does not exist" — idempotente, niente da
+    // segnalare. Tutti gli altri errori (DB lock, FK, schema mismatch)
+    // vengono propagati al caller per non lasciare credenziali stale in DB.
+    const code = (e as { code?: string })?.code;
+    if (code !== "P2025") throw e;
+  }
 }
 
 export async function markSynced(provider: string) {
