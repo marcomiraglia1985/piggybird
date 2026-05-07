@@ -9,6 +9,7 @@ import { getUserProfile } from "./user-profile";
 import { resolveAnthropicApiKey } from "./anthropic-key-resolver";
 import { shareTemplateAsync } from "./template-sync";
 import { stripJsonFence } from "./ai/json-utils";
+import { parseAmount, findHeaderRow } from "./csv-parsing-utils";
 import pkg from "../../package.json";
 
 async function notifyDevTeamForNewBank(
@@ -92,41 +93,6 @@ export function computeSignature(headers: string[]): string {
     .sort()
     .join("|");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
-}
-
-/**
- * Estrae la prima riga di header probabile. Cerca tra le prime 25 righe
- * quella con più cell non-vuote (di solito è l'header, dopo eventuali
- * pre-amboli di metadata).
- */
-function findHeaderRow(rows: string[][]): { headerRowIndex: number; headers: string[] } {
-  let bestIdx = 0;
-  let bestCount = 0;
-  for (let i = 0; i < Math.min(25, rows.length); i++) {
-    const nonEmpty = (rows[i] ?? []).filter((c) => c && c.trim()).length;
-    if (nonEmpty > bestCount) {
-      bestCount = nonEmpty;
-      bestIdx = i;
-    }
-  }
-  return { headerRowIndex: bestIdx, headers: rows[bestIdx] ?? [] };
-}
-
-/** Parse robusto importo: gestisce "1.234,56" / "1234.56" / "1,234.56" */
-function parseAmount(value: string, decimalSep: "," | "."): number {
-  if (!value) return 0;
-  const trimmed = value.trim().replace(/[€$£¥\s]/g, "");
-  if (!trimmed) return 0;
-  let clean = trimmed;
-  if (decimalSep === ",") {
-    // Formato EU: rimuovi punti (migliaia), virgola → punto
-    clean = trimmed.replace(/\./g, "").replace(",", ".");
-  } else {
-    // Formato US: rimuovi virgole (migliaia)
-    clean = trimmed.replace(/,/g, "");
-  }
-  const n = parseFloat(clean);
-  return Number.isFinite(n) ? n : 0;
 }
 
 /** Parse data in vari format. Ritorna ISO yyyy-mm-dd o null se invalida. */

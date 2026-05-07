@@ -75,22 +75,25 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Lookup conti attivi: usato sia dal quirk-routing (forceAccountId) sia,
+  // più sotto, da split-dedup e match ricorrenze programmate.
+  const activeAccounts = await prisma.account.findMany({
+    where: { active: true },
+    select: { id: true, name: true },
+  });
+  const accountIdByName = new Map(activeAccounts.map((a) => [a.name, a.id]));
+
   // Quirk routing: per le righe con `requireSuggestedAccount=true` (es.
   // interessi savings nel CSV Current di Revolut) risolviamo il nome conto
   // suggerito → ID. Se il conto esiste, settiamo `forceAccountId` per
   // overridare la scelta del pair stage. Altrimenti DROP della riga (l'utente
   // non ha quel conto configurato — non vogliamo creare tx fantasma).
   {
-    const accountsByName = await prisma.account.findMany({
-      where: { active: true },
-      select: { id: true, name: true },
-    });
-    const idByName = new Map(accountsByName.map((a) => [a.name, a.id]));
     let droppedQuirk = 0;
     let redirectedQuirk = 0;
     result.rows = result.rows.flatMap((row) => {
       if (!row.requireSuggestedAccount) return [row];
-      const targetId = row.suggestedAccount ? idByName.get(row.suggestedAccount) : null;
+      const targetId = row.suggestedAccount ? accountIdByName.get(row.suggestedAccount) : null;
       if (!targetId) {
         droppedQuirk++;
         return [];
@@ -125,18 +128,58 @@ export async function POST(req: NextRequest) {
     const maxDate = new Date(Math.max(...dates.map((d) => d.getTime())));
     maxDate.setDate(maxDate.getDate() + 1);
 
-    const existing = await prisma.transaction.findMany({
-      where: {
-        date: { gte: minDate, lt: maxDate },
-      },
-      select: { id: true, date: true, amount: true, beneficiary: true, notes: true, confirmed: true },
-    });
+    // Fuzzy dedup: range ±15gg per coprire entrate "spuntate" in anticipo
+    // (stipendio) E uscite ricorrenti registrate dalla banca con scarto di
+    // qualche giorno (Netflix, affitto, bollette).
+    const minDateExt = new Date(minDate);
+    minDateExt.setDate(minDateExt.getDate() - 15);
+    const maxDateExt = new Date(maxDate);
+    maxDateExt.setDate(maxDateExt.getDate() + 15);
+
+    // Le 3 query sono indipendenti (range/filtri diversi): in parallelo.
+    //  - existingFull: range stretto, alimenta dedup-index + split-dedup + soft-dup
+    //  - fuzzyDb: range ±15gg per fuzzy match
+    //  - pendingRecurrences: tx programmate non ancora confermate
+    const [existingFull, fuzzyDb, pendingRecurrences] = await Promise.all([
+      prisma.transaction.findMany({
+        where: { date: { gte: minDate, lt: maxDate } },
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          accountId: true,
+          beneficiary: true,
+          notes: true,
+          confirmed: true,
+          categoryId: true,
+          category: { select: { id: true, emoji: true, name: true } },
+        },
+      }),
+      prisma.transaction.findMany({
+        where: { date: { gte: minDateExt, lt: maxDateExt } },
+        select: { id: true, date: true, amount: true, beneficiary: true, notes: true, confirmed: true },
+      }),
+      prisma.transaction.findMany({
+        where: {
+          confirmed: false,
+          recurrenceGroupId: { not: null },
+          date: { gte: minDateExt, lt: maxDateExt },
+        },
+        select: {
+          id: true,
+          date: true,
+          amount: true,
+          accountId: true,
+          beneficiary: true,
+        },
+      }),
+    ]);
 
     // Dedup index: cerca match su (data, importo) e poi controlla che la
     // descrizione sia simile (prefisso comune di 4+ char, case-insensitive).
     type Candidate = { id: string; description: string; confirmed: boolean };
     const dupeIndex = new Map<string, Candidate[]>();
-    for (const e of existing) {
+    for (const e of existingFull) {
       const key = `${e.date.toISOString().slice(0, 10)}|${e.amount.toFixed(2)}`;
       const desc = ((e.beneficiary ?? "") + " " + (e.notes ?? "")).trim().toLowerCase();
       const arr = dupeIndex.get(key) ?? [];
@@ -198,27 +241,9 @@ export async function POST(req: NextRequest) {
       return null;
     }
 
-    // Split-dedup: indicizza tutte le righe DB per data, così possiamo
+    // Split-dedup: indicizza tutte le righe DB per data+account, così possiamo
     // riconoscere quando una riga CSV corrisponde alla somma di 2+ righe DB
     // (es. accredito CashPark = capitale + interessi su righe separate).
-    const accounts = await prisma.account.findMany({
-      select: { id: true, name: true },
-    });
-    const accountIdByName = new Map(accounts.map((a) => [a.name, a.id]));
-
-    const existingFull = await prisma.transaction.findMany({
-      where: { date: { gte: minDate, lt: maxDate } },
-      select: {
-        id: true,
-        date: true,
-        amount: true,
-        accountId: true,
-        beneficiary: true,
-        notes: true,
-        categoryId: true,
-        category: { select: { id: true, emoji: true, name: true } },
-      },
-    });
     const byDateAccount = new Map<string, { id: string; amount: number; description: string }[]>();
     for (const e of existingFull) {
       const key = `${e.date.toISOString().slice(0, 10)}|${e.accountId}`;
@@ -227,37 +252,6 @@ export async function POST(req: NextRequest) {
       arr.push({ id: e.id, amount: e.amount, description });
       byDateAccount.set(key, arr);
     }
-
-    // Fuzzy dedup: range ±15gg per coprire entrate "spuntate" in anticipo
-    // (stipendio) E uscite ricorrenti registrate dalla banca con scarto di
-    // qualche giorno (Netflix, affitto, bollette).
-    const minDateExt = new Date(minDate);
-    minDateExt.setDate(minDateExt.getDate() - 15);
-    const maxDateExt = new Date(maxDate);
-    maxDateExt.setDate(maxDateExt.getDate() + 15);
-    const fuzzyDb = await prisma.transaction.findMany({
-      where: { date: { gte: minDateExt, lt: maxDateExt } },
-      select: { id: true, date: true, amount: true, beneficiary: true, notes: true, confirmed: true },
-    });
-
-    // Tx ricorrenti programmate (confirmed=false con recurrenceGroupId): per
-    // queste si applica un dedup tollerante su importo — Netflix che alza il
-    // prezzo o EDF con bollette variabili devono matchare lo stesso. Il
-    // commit aggiornerà date/amount sulla tx programmata col valore CSV.
-    const pendingRecurrences = await prisma.transaction.findMany({
-      where: {
-        confirmed: false,
-        recurrenceGroupId: { not: null },
-        date: { gte: minDateExt, lt: maxDateExt },
-      },
-      select: {
-        id: true,
-        date: true,
-        amount: true,
-        accountId: true,
-        beneficiary: true,
-      },
-    });
 
     for (const row of result.rows) {
       const key = `${row.date}|${row.amount.toFixed(2)}`;

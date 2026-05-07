@@ -122,6 +122,53 @@ type RemoteTemplate = {
   createdAt: number;
 };
 
+type IncomingTemplate = {
+  signature?: string;
+  mapping?: string;
+  bankName?: string | null;
+  kind?: string;
+};
+
+/**
+ * Filter+insert helper condiviso tra `seedLearnedTemplates` e
+ * `syncTemplatesFromRegistry`. Scarta template malformati o avvelenati;
+ * inserisce con first-write-wins (UNIQUE su signature → catch in caso di race
+ * o template già presente). Per-row insert perché Prisma 7 + SQLite non
+ * supporta `skipDuplicates`.
+ */
+async function insertValidTemplates(rows: IncomingTemplate[]): Promise<number> {
+  const { isValidTemplateMapping } = await import("./universal-parser");
+  const valid = rows.filter((t) => {
+    if (!t.signature || !t.mapping) return false;
+    if (t.kind !== "bank" && t.kind !== "broker") return false;
+    if (t.kind === "bank") {
+      try {
+        return isValidTemplateMapping(JSON.parse(t.mapping));
+      } catch {
+        return false;
+      }
+    }
+    return true;
+  });
+  let inserted = 0;
+  for (const t of valid) {
+    const ok = await prisma.parserTemplate
+      .create({
+        data: {
+          signature: t.signature!,
+          mapping: t.mapping!,
+          bankName: t.bankName ?? null,
+          kind: t.kind!,
+          usageCount: 0,
+        },
+      })
+      .then(() => true)
+      .catch(() => false);
+    if (ok) inserted++;
+  }
+  return inserted;
+}
+
 /**
  * Pull dei template aggiunti al registry dopo l'ultimo sync. Upsert in
  * `ParserTemplate` locale (NX semantics: non sovrascrive template che
@@ -162,43 +209,7 @@ export async function seedLearnedTemplates(): Promise<number> {
       seededCache = true;
       return 0;
     }
-    const { isValidTemplateMapping } = await import("./universal-parser");
-    const { isValidTemplateMapping: validate } = await import("./universal-parser");
-    const valid = (raw as Array<{
-      signature?: string;
-      mapping?: string;
-      bankName?: string | null;
-      kind?: string;
-    }>).filter((t) => {
-      if (!t.signature || !t.mapping) return false;
-      if (t.kind !== "bank" && t.kind !== "broker") return false;
-      if (t.kind === "bank") {
-        try {
-          return validate(JSON.parse(t.mapping));
-        } catch {
-          return false;
-        }
-      }
-      return true;
-    });
-    // Per-row insert: Prisma 7 + SQLite non supporta `skipDuplicates`.
-    // Le race / duplicate vanno catturate con .catch() singolarmente.
-    let inserted = 0;
-    for (const t of valid) {
-      const ok = await prisma.parserTemplate
-        .create({
-          data: {
-            signature: t.signature!,
-            mapping: t.mapping!,
-            bankName: t.bankName ?? null,
-            kind: t.kind!,
-            usageCount: 0,
-          },
-        })
-        .then(() => true)
-        .catch(() => false);
-      if (ok) inserted++;
-    }
+    const inserted = await insertValidTemplates(raw as IncomingTemplate[]);
     await setSetting(SEEDED_KEY, "true");
     seededCache = true;
     return inserted;
@@ -232,38 +243,9 @@ export async function syncTemplatesFromRegistry(throttleMs = 0): Promise<number>
     }
 
     if (!Array.isArray(body.templates)) return 0;
-    // First-write-wins: i template che l'utente ha già localmente vincono
-    // (UNIQUE constraint su signature → la create fallisce e va in catch).
-    // Validation runtime: scarta mapping malformati o avvelenati dal registry.
-    const { isValidTemplateMapping } = await import("./universal-parser");
-    const valid = body.templates.filter((t) => {
-      if (!t.signature || !t.mapping) return false;
-      if (t.kind !== "bank" && t.kind !== "broker") return false;
-      if (t.kind === "bank") {
-        try {
-          return isValidTemplateMapping(JSON.parse(t.mapping));
-        } catch {
-          return false;
-        }
-      }
-      return true;
-    });
-    let inserted = 0;
-    for (const t of valid) {
-      const ok = await prisma.parserTemplate
-        .create({
-          data: {
-            signature: t.signature,
-            mapping: t.mapping,
-            bankName: t.bankName,
-            kind: t.kind,
-            usageCount: 0,
-          },
-        })
-        .then(() => true)
-        .catch(() => false);
-      if (ok) inserted++;
-    }
+    // First-write-wins: i template già presenti localmente vincono (UNIQUE su
+    // signature → la create fallisce e va in catch dentro `insertValidTemplates`).
+    const inserted = await insertValidTemplates(body.templates);
     if (typeof body.syncedAt === "number") {
       await setSetting(LAST_SYNC_KEY, String(body.syncedAt));
     }

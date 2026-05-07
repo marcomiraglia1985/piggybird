@@ -9,6 +9,7 @@ import { getUserProfile } from "./user-profile";
 import { resolveAnthropicApiKey } from "./anthropic-key-resolver";
 import { shareTemplateAsync } from "./template-sync";
 import { stripJsonFence } from "./ai/json-utils";
+import { parseAmount, findHeaderRow } from "./csv-parsing-utils";
 import pkg from "../../package.json";
 
 /**
@@ -54,17 +55,6 @@ export function computeBrokerSignature(headers: string[]): string {
     .sort()
     .join("|");
   return createHash("sha256").update(normalized).digest("hex").slice(0, 32);
-}
-
-function parseAmount(value: string, decimalSep: "," | "."): number {
-  if (!value) return 0;
-  const trimmed = value.trim().replace(/[€$£¥\s]/g, "");
-  if (!trimmed) return 0;
-  let clean = trimmed;
-  if (decimalSep === ",") clean = trimmed.replace(/\./g, "").replace(",", ".");
-  else clean = trimmed.replace(/,/g, "");
-  const n = parseFloat(clean);
-  return Number.isFinite(n) ? n : 0;
 }
 
 function parseDate(value: string, format: string): string | null {
@@ -277,17 +267,7 @@ export async function parseAnyBrokerWithFallback(csv: string): Promise<ParseResu
     return { ok: false, error: "CSV vuoto o non parsable" };
   }
 
-  // Cerca riga header (più cell non-vuote nelle prime 25 righe)
-  let bestIdx = 0;
-  let bestCount = 0;
-  for (let i = 0; i < Math.min(25, sampleRows.length); i++) {
-    const nonEmpty = (sampleRows[i] ?? []).filter((c) => c && c.trim()).length;
-    if (nonEmpty > bestCount) {
-      bestCount = nonEmpty;
-      bestIdx = i;
-    }
-  }
-  const headers = sampleRows[bestIdx] ?? [];
+  const { headers } = findHeaderRow(sampleRows);
   if (headers.length === 0) {
     return { ok: false, error: "Header non riconoscibile nelle prime 25 righe" };
   }

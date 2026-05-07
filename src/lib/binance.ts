@@ -10,6 +10,39 @@ const BASE = "https://api.binance.com";
 
 type SignedOptions = { method?: "GET" | "POST" };
 
+/**
+ * Traduce un payload di errore Binance in un messaggio comprensibile per
+ * l'utente finale. I codici sono documentati su
+ * https://binance-docs.github.io/apidocs/spot/en/#error-codes.
+ */
+function friendlyBinanceError(status: number, body: string): string {
+  let code: number | null = null;
+  let msg = body;
+  try {
+    const parsed = JSON.parse(body) as { code?: number; msg?: string };
+    if (typeof parsed.code === "number") code = parsed.code;
+    if (typeof parsed.msg === "string") msg = parsed.msg;
+  } catch {
+    // body non JSON: usa il testo raw
+  }
+  if (code === -2014 || code === -2015) {
+    return "API key non valida o senza permessi: su Binance → API Management verifica che la key abbia 'Enable Reading' attivo e che l'IP restriction sia disabilitato (o includa il tuo IP).";
+  }
+  if (code === -1021) {
+    return "Orologio del Mac non sincronizzato con il server Binance: apri Impostazioni di sistema → Generali → Data e ora e attiva la sincronizzazione automatica.";
+  }
+  if (code === -1022) {
+    return "Firma della richiesta non valida: la API secret salvata potrebbe essere troncata o errata. Rimuovi la connessione e re-inserisci le credenziali.";
+  }
+  if (status === 451) {
+    return "Binance ha bloccato la richiesta dalla tua region. Se usi una VPN, disattivala e riprova.";
+  }
+  if (status === 429 || status === 418) {
+    return "Rate limit Binance superato. Aspetta qualche minuto prima di rifare la sync.";
+  }
+  return code != null ? `Binance ${code}: ${msg}` : `Binance ${status}: ${msg}`;
+}
+
 async function signedRequest<T>(
   path: string,
   params: Record<string, string> = {},
@@ -36,7 +69,7 @@ async function signedRequest<T>(
   });
   if (!res.ok) {
     const err = await res.text();
-    throw new Error(`Binance ${path} ${res.status}: ${err}`);
+    throw new Error(friendlyBinanceError(res.status, err));
   }
   return (await res.json()) as T;
 }
@@ -144,16 +177,23 @@ async function fetchFuturesUsdm(): Promise<RawAsset[]> {
   }
 }
 
-/** Aggrega tutte le posizioni da tutti i wallet. */
+/**
+ * Aggrega tutte le posizioni dai wallet Binance.
+ *
+ * Spot+Funding è obbligatorio: se fallisce è un problema di credenziali o di
+ * permessi (Reading non abilitato, IP whitelist) e va surface'd, altrimenti
+ * l'utente vede "Connesso ✓ 0,00 €" senza capire perché. Earn e Futures sono
+ * opzionali (molti account non li hanno) → errori ignorati silenziosamente.
+ */
 export async function fetchAllPositions(): Promise<RawAsset[]> {
-  const results = await Promise.allSettled([
-    fetchSpotAndFunding(),
+  const spotAndFunding = await fetchSpotAndFunding();
+  const optional = await Promise.allSettled([
     fetchEarnFlexible(),
     fetchEarnLocked(),
     fetchFuturesUsdm(),
   ]);
-  const positions: RawAsset[] = [];
-  for (const r of results) {
+  const positions: RawAsset[] = [...spotAndFunding];
+  for (const r of optional) {
     if (r.status === "fulfilled") positions.push(...r.value);
   }
   return positions;
