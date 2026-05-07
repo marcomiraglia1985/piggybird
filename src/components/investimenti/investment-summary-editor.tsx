@@ -178,9 +178,9 @@ export function InvestmentSummaryEditor({
                   ? "—"
                   : "—"
             }
-            locked={entryFromTrades > 0 || tradesCount === 0}
+            locked={tradesCount === 0}
             action={
-              tradesCount > 0 && entryFromTrades === 0
+              tradesCount > 0
                 ? {
                     label: recalculating ? "Calcolo…" : "Ricalcola dai trade",
                     icon: <RefreshCw className={cn("size-3", recalculating && "animate-spin")} />,

@@ -1,6 +1,6 @@
 [package]
 name = "piggybird"
-version = "0.5.9"
+version = "0.5.10"
 description = "Piggybird — gestione finanze personali desktop"
 authors = ["Team Panino"]
 license = "MIT"
