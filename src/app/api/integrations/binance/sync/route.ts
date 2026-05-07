@@ -54,6 +54,34 @@ export async function POST() {
       });
     }
 
+    // Allinea il conto Binance dell'utente: il dashboard widget legge
+    // `Account.currentBalance` (via `displayBalance`), non `Investment.currentValue`.
+    // Senza questo update, il widget BINANCE resta a 0 anche se la sync ha
+    // popolato positions e Investment correttamente.
+    //
+    // L'API key Binance è UNA per installazione (in `ApiCredential`), ma
+    // l'utente può avere più Account marcati provider="binance" (es. main +
+    // sub-account). Senza un mapping per-account credential→account, non
+    // sappiamo a quale assegnare il saldo. Politiche:
+    //  - 0 account binance attivi → no-op (Investment.currentValue basta)
+    //  - 1 account → update di quello (caso comune)
+    //  - >1 account → skip + warning, l'utente deve linkare manualmente
+    //    quale account corrisponde alla key (TODO: per-account API link)
+    const binanceAccounts = await prisma.account.findMany({
+      where: { provider: "binance", active: true },
+      select: { id: true, name: true },
+    });
+    if (binanceAccounts.length === 1) {
+      await prisma.account.update({
+        where: { id: binanceAccounts[0].id },
+        data: { currentBalance: totalEur },
+      });
+    } else if (binanceAccounts.length > 1) {
+      console.warn(
+        `[binance/sync] ${binanceAccounts.length} conti binance attivi: saldo Account.currentBalance non aggiornato per evitare ambiguità. Names: ${binanceAccounts.map((a) => a.name).join(", ")}`,
+      );
+    }
+
     await markSynced("binance");
     return NextResponse.json({
       ok: true,

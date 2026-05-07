@@ -1,5 +1,5 @@
 import { prisma } from "./prisma";
-import { decrypt } from "./crypto";
+import { decrypt, ensureMasterKey } from "./crypto";
 
 const PROVIDER_KEY = "anthropic";
 
@@ -18,6 +18,7 @@ export type StoredKeyResult =
  *     dell'utente che va surface.
  */
 export async function getStoredAnthropicKey(): Promise<StoredKeyResult> {
+  await ensureMasterKey();
   const cred = await prisma.apiCredential.findUnique({
     where: { provider: PROVIDER_KEY },
   });

@@ -31,10 +31,15 @@ export function CryptoCostBasisEditor({
   platform,
   assets,
   allowAdd,
+  baselineCost = 0,
 }: {
   platform: string;
   assets: AssetRow[];
   allowAdd: boolean;
+  /** Baseline pre-API platform-level — usato per warning quando i costi
+   *  per-asset rappresentano solo i trade del broker (auto-backfill) e
+   *  l'utente ha anche un costo storico aggregato non distribuito. */
+  baselineCost?: number;
 }) {
   const router = useRouter();
   const confirm = useConfirm();
@@ -146,11 +151,26 @@ export function CryptoCostBasisEditor({
     router.refresh();
   }
 
+  const hasBaseline = baselineCost > 0;
+
   return (
     <div className="space-y-3">
       {error && (
         <div className="text-sm text-rose-400 inline-flex items-center gap-1.5">
           <AlertTriangle className="size-4" /> {error}
+        </div>
+      )}
+
+      {hasBaseline && assets.length > 0 && (
+        <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 text-xs text-[var(--fg-muted)] flex items-start gap-2">
+          <AlertTriangle className="size-4 text-amber-400 shrink-0 mt-0.5" />
+          <div>
+            I costi mostrati qui sotto sono solo quelli derivati dai trade del broker.
+            Il tuo <span className="font-medium">baseline pre-API ({formatEUR(baselineCost)})</span>{" "}
+            è incluso nel costo totale della platform ma non è distribuito per asset, quindi
+            il gain per riga non riflette le crypto comprate prima del broker. Per un breakdown
+            accurato, modifica manualmente i costi dei singoli asset cliccando ✏️.
+          </div>
         </div>
       )}
 

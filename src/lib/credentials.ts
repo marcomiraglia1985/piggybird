@@ -1,10 +1,15 @@
 import { prisma } from "./prisma";
-import { encrypt, decrypt, maskKey, type EncryptedField } from "./crypto";
+import { encrypt, decrypt, ensureMasterKey, maskKey, type EncryptedField } from "./crypto";
 
 /**
  * Service layer per le credenziali API: salva, carica, revoca.
  * Le credenziali in chiaro restano in memoria solo durante la chiamata
  * server-side; non vengono mai serializzate verso il client.
+ *
+ * Tutti i punti di accesso chiamano `ensureMasterKey()` prima di
+ * encrypt/decrypt: difesa contro il caso in cui il boot hook
+ * `instrumentation.ts` non sia riuscito a inizializzare la chiave
+ * (DB non pronto, race con migrations, edge runtime). Idempotente.
  */
 
 export async function saveCredential(
@@ -12,6 +17,7 @@ export async function saveCredential(
   apiKey: string,
   apiSecret: string,
 ) {
+  await ensureMasterKey();
   const encKey = encrypt(apiKey);
   const encSecret = encrypt(apiSecret);
   // Usa lo stesso IV/authTag della key per semplicità: in realtà sono due
@@ -59,6 +65,7 @@ export async function saveCredential(
 export async function getCredential(
   provider: string,
 ): Promise<{ apiKey: string; apiSecret: string } | null> {
+  await ensureMasterKey();
   const row = await prisma.apiCredential.findUnique({ where: { provider } });
   if (!row) return null;
   const apiKey = decrypt({ ciphertext: row.apiKey, iv: row.iv, authTag: row.authTag });

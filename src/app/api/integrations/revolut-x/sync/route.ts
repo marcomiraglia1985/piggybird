@@ -115,6 +115,24 @@ export async function POST() {
       });
     }
 
+    // Allinea Account.currentBalance del conto Revolut X (vedi binance/sync
+    // per la stessa logica + razionale). Update solo se esattamente 1 conto
+    // matchato; >1 → skip + warn (ambiguità di mapping credential→account).
+    const rxAccounts = await prisma.account.findMany({
+      where: { provider: "revolut-x", active: true },
+      select: { id: true, name: true },
+    });
+    if (rxAccounts.length === 1) {
+      await prisma.account.update({
+        where: { id: rxAccounts[0].id },
+        data: { currentBalance: total },
+      });
+    } else if (rxAccounts.length > 1) {
+      console.warn(
+        `[revolut-x/sync] ${rxAccounts.length} conti revolut-x attivi: saldo non aggiornato. Names: ${rxAccounts.map((a) => a.name).join(", ")}`,
+      );
+    }
+
     await markSynced("revolut-x");
     return NextResponse.json({
       ok: true,
