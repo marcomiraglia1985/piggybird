@@ -38,18 +38,38 @@ export function InvestmentSummaryEditor({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recalculating, setRecalculating] = useState(false);
+  const [recalcResult, setRecalcResult] = useState<{
+    inserted: number;
+    updated: number;
+    deleted: number;
+    skipped: string[];
+    aggregateEur: number;
+  } | null>(null);
 
   async function recalculateCostBasis() {
     setRecalculating(true);
     setError(null);
+    setRecalcResult(null);
     try {
       const res = await fetch("/api/integrations/binance/backfill-cost-basis", {
         method: "POST",
       });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error ?? "Errore ricalcolo");
-      }
+      const j = (await res.json().catch(() => null)) as {
+        error?: string;
+        costBasisInserted?: number;
+        costBasisUpdated?: number;
+        costBasisDeleted?: number;
+        skippedAssets?: string[];
+        aggregateCostEur?: number;
+      } | null;
+      if (!res.ok) throw new Error(j?.error ?? "Errore ricalcolo");
+      setRecalcResult({
+        inserted: j?.costBasisInserted ?? 0,
+        updated: j?.costBasisUpdated ?? 0,
+        deleted: j?.costBasisDeleted ?? 0,
+        skipped: j?.skippedAssets ?? [],
+        aggregateEur: j?.aggregateCostEur ?? 0,
+      });
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Errore ricalcolo");
@@ -97,6 +117,35 @@ export function InvestmentSummaryEditor({
       {error && (
         <div className="text-sm text-rose-400 inline-flex items-center gap-1.5">
           <AlertTriangle className="size-4" /> {error}
+        </div>
+      )}
+
+      {recalcResult && (
+        <div className="rounded-lg border border-violet-500/30 bg-violet-500/[0.06] p-3 text-xs text-[var(--fg-muted)] space-y-1">
+          <div className="font-medium text-[var(--fg)]">
+            Ricalcolato dai trade
+          </div>
+          <div className="tabular-nums">
+            {recalcResult.inserted + recalcResult.updated} asset col costo derivato
+            {recalcResult.aggregateEur > 0 && ` · ${formatEUR(recalcResult.aggregateEur)}`}
+            {recalcResult.deleted > 0 &&
+              ` · ${recalcResult.deleted} righe stale rimosse`}
+          </div>
+          {recalcResult.skipped.length > 0 && (
+            <div className="text-[var(--fg-subtle)]">
+              Skippati: {recalcResult.skipped.join(", ")} — quantità in wallet
+              superiore al netto comprato (asset arrivati da deposit/wallet
+              esterni, costo non derivabile dai trade Binance).
+            </div>
+          )}
+          {recalcResult.inserted + recalcResult.updated + recalcResult.deleted ===
+            0 &&
+            recalcResult.skipped.length === 0 && (
+              <div className="text-[var(--fg-subtle)]">
+                Nessun trade EUR trovato nello storico — i tuoi asset sono
+                arrivati su Binance solo come deposit, niente da derivare.
+              </div>
+            )}
         </div>
       )}
 

@@ -32,6 +32,7 @@ export function CryptoCostBasisEditor({
   assets,
   allowAdd,
   baselineCost = 0,
+  nonDerivableAssets = [],
 }: {
   platform: string;
   assets: AssetRow[];
@@ -40,7 +41,13 @@ export function CryptoCostBasisEditor({
    *  per-asset rappresentano solo i trade del broker (auto-backfill) e
    *  l'utente ha anche un costo storico aggregato non distribuito. */
   baselineCost?: number;
+  /** Asset per cui current_qty > net_buy_qty (heuristic): la posizione è
+   *  arrivata in prevalenza da deposit/wallet esterni → costo non derivabile
+   *  dai soli trade Binance. Mostriamo "non calcolabile" invece di "non
+   *  impostato". */
+  nonDerivableAssets?: string[];
 }) {
+  const nonDerivableSet = new Set(nonDerivableAssets);
   const router = useRouter();
   const confirm = useConfirm();
   const [editingAsset, setEditingAsset] = useState<string | null>(null);
@@ -276,6 +283,13 @@ export function CryptoCostBasisEditor({
                           "cost",
                           r.costEur != null ? (
                             <span className="text-[var(--fg-muted)]">{formatEUR(r.costEur)}</span>
+                          ) : nonDerivableSet.has(r.asset) ? (
+                            <span
+                              className="text-[var(--fg-subtle)] italic text-xs"
+                              title="La quantità in wallet supera il netto comprato dai trade Binance: la maggior parte è arrivata da deposit/wallet esterni, quindi il costo non è derivabile dai soli trade. Puoi inserirlo manualmente."
+                            >
+                              non calcolabile
+                            </span>
                           ) : (
                             <span className="text-[var(--fg-subtle)] italic text-xs">
                               non impostato

@@ -49,10 +49,28 @@ export async function CryptoPlatformView({
     where: { platform, type: "crypto" },
   });
 
-  // Count trade history records: per distinguere il caso "nessun trade
-  // importato" (utente deve fare import) dal caso "trade importati ma cost
-  // basis non calcolato" (basta cliccare 'Ricalcola').
+  // Count trade history + aggregato cash netto sui trade EUR: ci servono per
+  // distinguere "nessun trade importato" da "trade importati", per il costo
+  // entry aggregato (sum BUY EUR − sum SELL EUR), e per derivare gli asset
+  // NON-derivabili (current_qty > net_buy_qty: posizione arrivata in
+  // prevalenza da deposit esterni, costo non recuperabile dai soli trade).
   const tradesCount = await prisma.cryptoTrade.count({ where: { platform } });
+  const tradeAggregate = await prisma.cryptoTrade.findMany({
+    where: { platform, source: "binance-api", totalEur: { gt: 0 } },
+    select: { asset: true, direction: true, quantity: true, totalEur: true },
+  });
+  const entryFromTrades = tradeAggregate.reduce(
+    (s, t) => s + (t.direction === "buy" ? t.totalEur : -t.totalEur),
+    0,
+  );
+  const netQtyByAsset = new Map<string, number>();
+  for (const t of tradeAggregate) {
+    const sign = t.direction === "buy" ? 1 : -1;
+    netQtyByAsset.set(
+      t.asset,
+      (netQtyByAsset.get(t.asset) ?? 0) + sign * t.quantity,
+    );
+  }
 
   const total = positions.reduce((s, p) => s + p.eurValue, 0);
 
@@ -78,16 +96,39 @@ export async function CryptoPlatformView({
     .sort((a, b) => b.eurValue - a.eurValue);
 
   // Cost model:
-  //  - perAssetCost: somma `CryptoCostBasis` per asset, popolata dal backfill
-  //    sui trade Binance (read-only, riflette i dati API).
-  //  - baselineCost: `Investment.costEur` manuale, rappresenta il costo storico
-  //    PRE-API (crypto comprate prima di collegare il broker, transferi da
-  //    wallet esterni con cost basis che nessuna API può recuperare).
-  //  - totalCost = baseline + entry: i due si sommano sempre, mai uno o l'altro.
-  const perAssetCost = assetRows.reduce((s, r) => s + (r.costEur ?? 0), 0);
+  //  - entryFromTrades: cash netto realmente speso via trade Binance (sum
+  //    BUY EUR − sum SELL EUR). Sempre disponibile, è una verità aggregata
+  //    sulla platform.
+  //  - baselineCost: `Investment.costEur` manuale, costo storico PRE-API
+  //    (crypto pre-broker, transferi da wallet esterni con cost basis non
+  //    recuperabile dalla API).
+  //  - totalCost = baseline + entry: i due si sommano sempre.
+  //
+  //  Per-asset: `costByAsset` (CryptoCostBasis) viene popolato dal backfill
+  //  SOLO per asset dove la posizione attuale è interamente spiegata dai trade
+  //  (heuristic). Asset con `currentQty > netBuyQty` sono in `nonDerivableAssets`
+  //  e ricevono label "non calcolabile" nella tabella per-asset.
   const baselineCost = investment?.costEur ?? 0;
-  const totalCost = baselineCost + perAssetCost;
+  const totalCost = baselineCost + entryFromTrades;
   const unrealizedGain = totalCost > 0 ? total - totalCost : 0;
+
+  // Un asset è "non calcolabile" dalla sola API se:
+  //  (a) ha trade EUR ma current_qty > net_buy_qty (in prevalenza da deposit
+  //      esterni — heuristic classica), OPPURE
+  //  (b) NON ha alcun trade EUR (solo deposit/withdraw, o solo trade
+  //      crypto-to-crypto con totalEur=0 → costo storico EUR ignoto).
+  // In API mode, se cost == null, è sempre uno di questi due casi: non
+  // mostriamo "non impostato" (suggerirebbe input manuale dovuto), ma
+  // "non calcolabile" con tooltip — l'edit manuale resta disponibile come
+  // override per chi vuole.
+  const nonDerivableAssets = new Set<string>();
+  for (const [asset, info] of byAsset) {
+    if (info.amount <= 0) continue;
+    const netQty = netQtyByAsset.get(asset) ?? 0;
+    if (netQty <= 0 || info.amount > netQty * 1.01) {
+      nonDerivableAssets.add(asset);
+    }
+  }
 
   // By source
   const bySource = new Map<string, number>();
@@ -164,7 +205,7 @@ export async function CryptoPlatformView({
               investmentId={investment.id}
               currentValue={investment.currentValue}
               baselineCost={investment.costEur}
-              entryFromTrades={perAssetCost}
+              entryFromTrades={entryFromTrades}
               tradesCount={tradesCount}
               mode="manual"
             />
@@ -255,7 +296,7 @@ export async function CryptoPlatformView({
                 investmentId={investment.id}
                 currentValue={investment.currentValue}
                 baselineCost={investment.costEur}
-                entryFromTrades={perAssetCost}
+                entryFromTrades={entryFromTrades}
                 tradesCount={tradesCount}
                 mode="api"
               />
@@ -271,6 +312,8 @@ export async function CryptoPlatformView({
               platform={platform}
               assets={assetRows}
               allowAdd={false}
+              baselineCost={baselineCost}
+              nonDerivableAssets={[...nonDerivableAssets]}
             />
           </div>
         </>
