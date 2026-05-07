@@ -49,6 +49,11 @@ export async function CryptoPlatformView({
     where: { platform, type: "crypto" },
   });
 
+  // Count trade history records: per distinguere il caso "nessun trade
+  // importato" (utente deve fare import) dal caso "trade importati ma cost
+  // basis non calcolato" (basta cliccare 'Ricalcola').
+  const tradesCount = await prisma.cryptoTrade.count({ where: { platform } });
+
   const total = positions.reduce((s, p) => s + p.eurValue, 0);
 
   // Aggregate by asset
@@ -72,18 +77,17 @@ export async function CryptoPlatformView({
     }))
     .sort((a, b) => b.eurValue - a.eurValue);
 
+  // Cost model:
+  //  - perAssetCost: somma `CryptoCostBasis` per asset, popolata dal backfill
+  //    sui trade Binance (read-only, riflette i dati API).
+  //  - baselineCost: `Investment.costEur` manuale, rappresenta il costo storico
+  //    PRE-API (crypto comprate prima di collegare il broker, transferi da
+  //    wallet esterni con cost basis che nessuna API può recuperare).
+  //  - totalCost = baseline + entry: i due si sommano sempre, mai uno o l'altro.
   const perAssetCost = assetRows.reduce((s, r) => s + (r.costEur ?? 0), 0);
-  const valueOfPricedAssets = assetRows
-    .filter((r) => r.costEur != null)
-    .reduce((s, r) => s + r.eurValue, 0);
-
-  // Se non c'è alcun cost basis per-asset, ma Investment.costEur è valorizzato,
-  // usalo come fallback (cost basis aggregato platform-level — utile per
-  // portafogli storici dove non si ha il dettaglio per ogni trade).
-  const usingAggregateCost = perAssetCost === 0 && investment?.costEur != null;
-  const totalCost = usingAggregateCost ? investment!.costEur! : perAssetCost;
-  const valueOfPriced = usingAggregateCost ? total : valueOfPricedAssets;
-  const unrealizedGain = totalCost > 0 ? valueOfPriced - totalCost : 0;
+  const baselineCost = investment?.costEur ?? 0;
+  const totalCost = baselineCost + perAssetCost;
+  const unrealizedGain = totalCost > 0 ? total - totalCost : 0;
 
   // By source
   const bySource = new Map<string, number>();
@@ -159,7 +163,10 @@ export async function CryptoPlatformView({
             <InvestmentSummaryEditor
               investmentId={investment.id}
               currentValue={investment.currentValue}
-              costEur={investment.costEur}
+              baselineCost={investment.costEur}
+              entryFromTrades={perAssetCost}
+              tradesCount={tradesCount}
+              mode="manual"
             />
           )}
           <div className="surface p-6 text-sm text-[var(--fg-muted)] space-y-3">
@@ -188,11 +195,6 @@ export async function CryptoPlatformView({
                   {totalCost > 0 && (
                     <div className="mt-2 text-sm text-[var(--fg-muted)]">
                       Costo {formatEUR(totalCost, { compact: true })}
-                      {valueOfPriced < total && (
-                        <span className="text-[11px] text-[var(--fg-subtle)] ml-1.5">
-                          (su {formatEUR(valueOfPriced, { compact: true })})
-                        </span>
-                      )}
                     </div>
                   )}
                 </div>
@@ -243,22 +245,20 @@ export async function CryptoPlatformView({
             </div>
           </div>
 
-          {/* Cost basis aggregato (solo se non c'è breakdown per-asset) */}
-          {perAssetCost === 0 && investment && (
+          {/* Riepilogo costi: entry from trades (read-only) + baseline pre-API (editable) */}
+          {investment && (
             <div>
               <h2 className="text-sm font-medium uppercase tracking-wider text-[var(--fg-muted)] mb-3 px-1">
-                Costo aggregato (platform-level)
+                Costo platform
               </h2>
               <InvestmentSummaryEditor
                 investmentId={investment.id}
                 currentValue={investment.currentValue}
-                costEur={investment.costEur}
+                baselineCost={investment.costEur}
+                entryFromTrades={perAssetCost}
+                tradesCount={tradesCount}
+                mode="api"
               />
-              <p className="mt-2 text-[11px] text-[var(--fg-subtle)] px-1">
-                Imposta il costo totale storico cliccando ✏️. Il valore corrente si aggiorna
-                automaticamente dalle posizioni (sync); il costo resta fisso e ricalcola il
-                gain quando i prezzi si muovono.
-              </p>
             </div>
           )}
 

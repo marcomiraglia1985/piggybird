@@ -8,6 +8,7 @@ import {
   fetchFiatOrders,
   type BinanceTrade,
 } from "@/lib/binance";
+import { backfillBinanceCostBasis } from "@/lib/binance-cost-basis";
 
 export const runtime = "nodejs";
 export const maxDuration = 300; // 5 minuti — l'import può durare a lungo
@@ -273,6 +274,18 @@ export async function POST() {
       }
     }
 
+    // Auto-backfill `CryptoCostBasis` per asset dai trade appena importati. Se
+    // fallisce non blocca la response: l'utente vede comunque l'import OK e può
+    // ri-triggerare il backfill manualmente. Errore solo loggato.
+    let costBasisBackfill: Awaited<
+      ReturnType<typeof backfillBinanceCostBasis>
+    > | null = null;
+    try {
+      costBasisBackfill = await backfillBinanceCostBasis();
+    } catch (e) {
+      console.warn("[import-history] backfill cost-basis failed:", e);
+    }
+
     return NextResponse.json({
       ok: true,
       summary: {
@@ -288,6 +301,7 @@ export async function POST() {
         cryptoWithdrawalsSkipped: withdrawalsSkipped,
         fiatDeposits: fiatDeposits.length,
         fiatWithdrawals: fiatWithdrawals.length,
+        costBasis: costBasisBackfill,
       },
     });
   } catch (e) {
