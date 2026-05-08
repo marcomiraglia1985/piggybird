@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, AlertTriangle, Save } from "lucide-react";
@@ -35,16 +35,22 @@ export function EditEntrataDialog({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Inizializza dai valori della tx quando si apre
-  if (open && tx && date === "" && amount === "") {
-    const d = new Date(tx.date);
-    const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    setDate(iso);
-    setAmount(tx.amount.toString());
-    setAccountId(tx.account.id);
-    setBeneficiary(tx.beneficiary ?? "");
-    setConfirmed(tx.confirmed);
-  }
+  // Inizializza i campi quando il dialog si apre o cambia la tx target.
+  // PRIMA: condizione `date===""&&amount===""` durante il render → React
+  // anti-pattern + bug: aprire una seconda tx senza cleanup mostrava i
+  // valori della tx PRECEDENTE perché la condizione non matchava più.
+  useEffect(() => {
+    if (open && tx) {
+      const d = new Date(tx.date);
+      const iso = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      setDate(iso);
+      setAmount(tx.amount.toString());
+      setAccountId(tx.account.id);
+      setBeneficiary(tx.beneficiary ?? "");
+      setConfirmed(tx.confirmed);
+      setError(null);
+    }
+  }, [open, tx]);
 
   function close() {
     setDate("");
@@ -103,7 +109,7 @@ export function EditEntrataDialog({
             className="w-full max-w-md surface p-6 space-y-5"
           >
             <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">Modifica entrata</h2>
+              <h2 className="text-lg font-semibold">Modifica movimento</h2>
               <button
                 onClick={close}
                 className="size-8 inline-flex items-center justify-center rounded-lg hover:bg-[var(--surface-2)]"
@@ -172,9 +178,9 @@ export function EditEntrataDialog({
                   className="size-4 accent-violet-500"
                 />
                 <span className="text-sm">
-                  Già incassato
+                  Già avvenuto
                   <span className="text-[var(--fg-subtle)] ml-1.5 text-xs">
-                    (deselezionare se la entrata è programmata ma non ancora arrivata)
+                    (deselezionare se il movimento è programmato ma non ancora avvenuto)
                   </span>
                 </span>
               </label>

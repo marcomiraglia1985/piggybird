@@ -9,6 +9,7 @@ import {
   getSpyMonthlySeries,
   getMdloxMonthlySeries,
   getBrkbMonthlySeries,
+  getEurUsdMonthlySeries,
 } from "@/lib/queries/investments";
 import {
   getMonthSummary,
@@ -36,6 +37,8 @@ import { AnniversaryWidget } from "@/components/dashboard/anniversary-widget";
 import { EstateRoiWidget } from "@/components/dashboard/estate-roi-widget";
 import { CoffeeTrackerWidget } from "@/components/dashboard/coffee-tracker-widget";
 import { Sp500BeatWidget } from "@/components/dashboard/sp500-beat-widget";
+import { LiveAnomaliesWidget } from "@/components/dashboard/live-anomalies-widget";
+import { detectLiveAnomalies } from "@/lib/insights/anomalies-live";
 import { NetWorthInsightsWidget } from "@/components/dashboard/networth-insights-widget";
 import { PersonalityCardWidget } from "@/components/dashboard/personality-card-widget";
 import { getPersonalityProfile } from "@/lib/personality";
@@ -69,6 +72,7 @@ export default async function Dashboard() {
     spySeries,
     mdloxSeries,
     brkbSeries,
+    eurUsdSeries,
     worldLandPath,
     fxStaleness,
   ] = await Promise.all([
@@ -99,9 +103,14 @@ export default async function Dashboard() {
     getSpyMonthlySeries(),
     getMdloxMonthlySeries(),
     getBrkbMonthlySeries(),
+    getEurUsdMonthlySeries(),
     getWorldLandPath(),
     getFxStalenessReport(),
   ]);
+
+  // Live anomalies: zero cache, calcolato ogni render. Veloce (1 query
+  // tx aggregata per categoria + math statistico).
+  const liveAnomalies = await detectLiveAnomalies(now);
 
   const personalityProfile = await getPersonalityProfile();
 
@@ -233,6 +242,19 @@ export default async function Dashboard() {
             maxSpan: 1,
           },
           {
+            id: "live-anomalies",
+            label: "Anomalie del mese",
+            node: (
+              <LiveAnomaliesWidget
+                key="live-anomalies"
+                anomalies={liveAnomalies}
+              />
+            ),
+            defaultSpan: 1,
+            minSpan: 1,
+            maxSpan: 1,
+          },
+          {
             id: "milestones",
             label: "Milestones LNW",
             node: <MilestonesWidget key="milestones" history={history} />,
@@ -308,6 +330,7 @@ export default async function Dashboard() {
                 spySeries={spySeries}
                 mdloxSeries={mdloxSeries}
                 brkbSeries={brkbSeries}
+                eurUsdSeries={eurUsdSeries}
               />
             ),
             defaultSpan: 1,

@@ -35,9 +35,14 @@ type Props = {
   cashflows: Cashflow[];
   finalByPlatform: Record<string, number>;
   platforms: string[];
+  /** SPY mensile, prezzi USD nativi (Yahoo). Convertiti a EUR internamente. */
   spySeries: SpyPoint[] | null;
   mdloxSeries: SpyPoint[] | null;
   brkbSeries: SpyPoint[] | null;
+  /** EUR/USD mensile (Yahoo `EURUSD=X`, USD per 1 EUR). Usato per
+   *  convertire le serie benchmark USD-denominated in EUR così che il
+   *  confronto col portfolio EUR sia coerente in unità. */
+  eurUsdSeries: SpyPoint[] | null;
 };
 
 type ViewMode = "numeric" | "chart";
@@ -108,6 +113,28 @@ function spyPriceAt(series: SpyPoint[], targetMs: number): number | null {
   return series[series.length - 1].price;
 }
 
+/**
+ * Converte una serie di prezzi USD in EUR usando il tasso EUR/USD storico.
+ * `eurUsd` è "USD per 1 EUR" → priceEur = priceUsd / eurUsd.
+ *
+ * Per ogni timestamp della serie USD, interpola eurUsd al prezzo del
+ * momento. Se eurUsdSeries è null o vuota → ritorna null (caller deciderà
+ * fallback, es. mostrare warning "FX mancante" invece di numeri sbagliati).
+ */
+function convertSeriesToEur(
+  usdSeries: SpyPoint[] | null,
+  eurUsdSeries: SpyPoint[] | null,
+): SpyPoint[] | null {
+  if (!usdSeries || usdSeries.length < 2) return null;
+  if (!eurUsdSeries || eurUsdSeries.length < 2) return null;
+  return usdSeries.map((p) => {
+    const ms = new Date(p.date).getTime();
+    const eurUsd = spyPriceAt(eurUsdSeries, ms);
+    if (eurUsd == null || eurUsd <= 0) return p; // fallback: lascia USD raw
+    return { date: p.date, price: p.price / eurUsd };
+  });
+}
+
 export function Sp500BeatWidget({
   cashflows,
   finalByPlatform,
@@ -115,7 +142,23 @@ export function Sp500BeatWidget({
   spySeries,
   mdloxSeries,
   brkbSeries,
+  eurUsdSeries,
 }: Props) {
+  // Normalizza tutte le serie benchmark USD → EUR PRIMA dei calcoli, così
+  // il resto della logica (shares, IRR, total return) lavora in unità
+  // coerenti con i cashflow EUR-denominated dell'utente.
+  const spySeriesEur = useMemo(
+    () => convertSeriesToEur(spySeries, eurUsdSeries),
+    [spySeries, eurUsdSeries],
+  );
+  const mdloxSeriesEur = useMemo(
+    () => convertSeriesToEur(mdloxSeries, eurUsdSeries),
+    [mdloxSeries, eurUsdSeries],
+  );
+  const brkbSeriesEur = useMemo(
+    () => convertSeriesToEur(brkbSeries, eurUsdSeries),
+    [brkbSeries, eurUsdSeries],
+  );
   const [opts, setOpts, reset] = useWidgetSettings("sp500-beat", DEFAULTS);
 
   const activePlatforms =
@@ -125,33 +168,33 @@ export function Sp500BeatWidget({
 
   const benchmarks: BenchmarkConfig[] = useMemo(() => {
     const list: BenchmarkConfig[] = [
-      { key: "spy", label: "S&P 500", longLabel: "SPY", color: "#94a3b8", series: spySeries },
+      { key: "spy", label: "S&P 500", longLabel: "SPY", color: "#94a3b8", series: spySeriesEur },
     ];
-    if (opts.showMdlox && mdloxSeries) {
+    if (opts.showMdlox && mdloxSeriesEur) {
       list.push({
         key: "mdlox",
         label: "Larry Fink",
         longLabel: "MDLOX (BlackRock Global Allocation)",
         color: "#fb923c",
-        series: mdloxSeries,
+        series: mdloxSeriesEur,
       });
     }
-    if (opts.showBrkb && brkbSeries) {
+    if (opts.showBrkb && brkbSeriesEur) {
       list.push({
         key: "brkb",
         label: "Warren Buffett",
         longLabel: "BRK-B (Berkshire Hathaway)",
         color: "#34d399",
-        series: brkbSeries,
+        series: brkbSeriesEur,
       });
     }
     return list;
-  }, [spySeries, mdloxSeries, brkbSeries, opts.showMdlox, opts.showBrkb]);
+  }, [spySeriesEur, mdloxSeriesEur, brkbSeriesEur, opts.showMdlox, opts.showBrkb]);
 
   const data = useMemo(() => {
     if (
-      !spySeries ||
-      spySeries.length < 2 ||
+      !spySeriesEur ||
+      spySeriesEur.length < 2 ||
       activePlatforms.length === 0 ||
       cashflows.length === 0
     ) {
@@ -301,7 +344,7 @@ export function Sp500BeatWidget({
       finalValue,
       trajectory,
     };
-  }, [cashflows, finalByPlatform, activePlatforms, spySeries, benchmarks]);
+  }, [cashflows, finalByPlatform, activePlatforms, spySeriesEur, benchmarks]);
 
   function togglePlatform(p: string) {
     const current = activePlatforms;
@@ -464,6 +507,11 @@ export function Sp500BeatWidget({
         ) : !spySeries ? (
           <p className="text-xs text-[var(--fg-subtle)] py-6 text-center">
             Yahoo Finance non risponde. Riprova tra un attimo.
+          </p>
+        ) : !eurUsdSeries ? (
+          <p className="text-xs text-[var(--fg-subtle)] py-6 text-center">
+            Tasso storico EUR/USD non disponibile (Yahoo {`EURUSD=X`}). Senza
+            FX history il confronto col benchmark non è coerente.
           </p>
         ) : activePlatforms.length === 0 ? (
           <p className="text-xs text-[var(--fg-subtle)] py-6 text-center">

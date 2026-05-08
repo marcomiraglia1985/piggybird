@@ -63,7 +63,7 @@ const DEFAULT_PLACEMENT: Placement = {
     "accounts",
   ],
   cols: [
-    ["top-expenses", "asset-allocation", "estate-roi", "sp500-beat"],
+    ["top-expenses", "live-anomalies", "asset-allocation", "estate-roi", "sp500-beat"],
     ["anniversary", "coffee-tracker", "world-clocks", "recent-transactions"],
   ],
 };

@@ -4,11 +4,16 @@ import { useEffect } from "react";
 import * as Sentry from "@sentry/nextjs";
 
 /**
- * Linka gli errori Sentry al profilo utente corrente (email + nome). Senza
- * questo, in dashboard Sentry vedi solo "user anonimo".
+ * Linka gli errori Sentry a un identificativo opaco dell'utente.
  *
- * Privacy: invia SOLO email + name (i dati che l'utente ha già acconsentito
- * di mandare con gli snapshot). Niente paesi/professione/ecc.
+ * Privacy: invia SOLO l'email-local-part come username (es. "marco"), MAI
+ * email piena né nome. Per il dev che debugga è abbastanza per correlare
+ * errori dello stesso utente ricevuti su più sessioni; per Sentry è un
+ * pseudonimo non un PII completo (non risalibile alla persona reale senza
+ * accesso al DB locale dell'utente).
+ *
+ * Niente paesi/professione/ecc. — Sentry deve avere il minimo per fare
+ * grouping di errori, non profilare.
  */
 export function SentryUserContext() {
   useEffect(() => {
@@ -18,9 +23,10 @@ export function SentryUserContext() {
       .then((d) => {
         const p = d.profile;
         if (p?.email) {
+          // Solo local-part (es. "marco"), no @domain. Identificativo
+          // sufficiente per dev debugging, non risalibile a persona.
           Sentry.setUser({
-            email: p.email,
-            username: p.name || p.email.split("@")[0],
+            username: p.email.split("@")[0],
           });
         }
       })

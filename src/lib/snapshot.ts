@@ -73,27 +73,23 @@ export async function submitDebugSnapshot(opts: {
 
   // 2. Upload file
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19); // 2026-04-30T15-30-12
-  const filePath = `snapshots/${ts}_${userSlug(profile.email)}.db.gz`;
+  const slug = userSlug(profile.email);
+  const filePath = `snapshots/${ts}_${slug}.db.gz`;
   const uploaded = await uploadFile(
     filePath,
     gz,
-    `Snapshot from ${profile.email} — ${ts}`,
+    `Snapshot from ${slug} — ${ts}`,
   );
 
   // 3. Create issue with metadata
+  // PRIVACY: il repo Piggybird è pubblico, le issue sono visibili a tutti.
+  // Niente PII identificativi nel body (nome, email, paesi, età, famiglia,
+  // ecc.). Il dev riconosce chi ha mandato lo snapshot dal local-part email
+  // nel nome file (`<ts>_<slug>.db.gz`) → identificativo minimo. La email
+  // completa NON va in plaintext.
   const truncated = (opts.userMessage ?? "").trim().slice(0, 4000);
-  const title = `[Snapshot] ${profile.name}${truncated ? ` — ${truncated.split("\n")[0].slice(0, 60)}` : ""}`;
+  const title = `[Snapshot] ${slug}${truncated ? ` — ${truncated.split("\n")[0].slice(0, 60)}` : ""}`;
   const body = [
-    `## 👤 Utente`,
-    `- **Nome:** ${profile.name}`,
-    `- **Email:** ${profile.email}`,
-    `- **Paesi:** ${profile.countries.join(", ") || "—"}`,
-    `- **Età:** ${profile.birthDate || "—"}`,
-    `- **Famiglia:** ${profile.familyStatus || "—"}`,
-    `- **Professione:** ${profile.profession || "—"}`,
-    `- **Esperienza:** ${profile.trackingExperience || "—"}`,
-    `- **Goals:** ${profile.goals.join(", ") || "—"}`,
-    ``,
     `## 💻 Sistema`,
     `- **App version:** ${sys.appVersion}`,
     `- **Platform:** ${sys.platform} ${sys.osVersion} (${sys.arch})`,

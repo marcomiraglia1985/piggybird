@@ -46,6 +46,23 @@ export type IssueInput = {
   last6Months: number[]; // sparkline data
   milestoneCrossed: { threshold: number; previousValue: number; currentValue: number } | null;
 
+  // === Liquid net worth (cash + savings, escluso investments + real estate) ===
+  // Storia separata dal NW totale: il totale può salire perché crescono gli
+  // investimenti mentre la liquidità si erode (acquisti casa, spese grandi).
+  // Narrativamente sono storie distinte che vanno raccontate separatamente.
+  liquidityDelta: { eur: number; pct: number; current: number; previous: number };
+  liquidityYtd: { eur: number; pct: number; current: number; startOfYear: number };
+  liquidityLast12Months: number[]; // sparkline 12 punti per stagionalità
+
+  // === Pillar breakdown: delta MoM di ogni componente del NW. L'AI vede
+  // quale pillar ha guidato il movimento del mese (es. "il NW sale +€8K
+  // ma è tutto investments in crescita; la liquidità è scesa di €3K"). ===
+  pillarBreakdown: {
+    liquidity: { current: number; eurDeltaMoM: number; pctDeltaMoM: number };
+    savings: { current: number; eurDeltaMoM: number; pctDeltaMoM: number };
+    investments: { current: number; eurDeltaMoM: number; pctDeltaMoM: number };
+  };
+
   // === Cashflow del mese target ===
   monthIncome: number;
   monthExpense: number; // positivo (magnitudine)
@@ -77,6 +94,56 @@ export type IssueInput = {
   // === Anomalies categoria spesa ===
   anomalies: Array<{ category: string; thisMonth: number; avg6m: number; pctChange: number }>;
 
+  // === Anniversary check: pattern ricorrenti YoY (es. bonus annuale, premio
+  // assicurazione): mostra cosa è atteso vs cosa è arrivato. L'AI scrive
+  // cose del tipo "il bonus Courage di maggio (l'anno scorso €3K) non è
+  // ancora visto, ma c'è una tx programmata per giugno". ===
+  anniversaries: Array<{
+    pattern: string; // "Pagamento da COURAGE S.R.L."
+    lastYearLabel: string; // "maggio 2025"
+    lastYearEur: number;
+    status: "arrived-as-expected" | "missing" | "scheduled-future";
+    thisYearEur: number | null;
+    /** Descrizione status leggibile (es. "atteso 12 giugno"). */
+    thisYearNote: string;
+  }>;
+
+  // === Eventi straordinari del periodo: signal narrativi che l'AI usa per
+  // tessere la cronaca del mese. Diversi da `anomalies` (che è solo spike
+  // categoria-vs-storico): qui catturiamo cambi strutturali di vita
+  // finanziaria — acquisto immobile, mutuo nuovo, drawdown forte, ecc. ===
+  events: Array<{
+    type:
+      | "estate-purchase"
+      | "mortgage-start"
+      | "nw-inversion"
+      | "category-spike"
+      | "milestone-crossed";
+    label: string; // human-readable, es. "Acquisto Casa Roma il 12 marzo"
+    /** Importo associato (es. prezzo acquisto, capitale residuo, delta NW). */
+    eurAmount?: number;
+    /** Data ISO se l'evento ha un timestamp specifico. */
+    dateIso?: string;
+    /** Contesto extra leggibile (es. "rata €880/mese, durata 25 anni"). */
+    context?: string;
+  }>;
+
+  // === Forward-looking: agenda finanziaria dei prossimi 60gg basata su tx
+  // programmate (date > oggi OPPURE confirmed=false). L'AI scrive la
+  // sezione "cosa aspettarsi" del numero ("in arrivo €3.5K bonus, –€880
+  // mutuo Casa Roma, saldo atteso a +€42K"). ===
+  forwardLooking: {
+    windowDays: number;
+    expectedIncomeEur: number;
+    expectedExpenseEur: number; // magnitude positive
+    expectedNetEur: number;
+    bigItems: Array<{
+      dateIso: string;
+      label: string; // beneficiary o categoria leggibile
+      amountEur: number; // signed
+    }>;
+  };
+
   // === Conti remunerati (APY > 0) ===
   interestBearingAccounts: Array<{ name: string; type: string; balanceEur: number; apyPct: number }>;
 
@@ -107,13 +174,22 @@ export type IssueInput = {
     directive: string; // istruzione esplicita a Claude
   };
 
-  // === Memoria: ultimi 2-3 numeri pubblicati per evitare ripetizioni ===
-  lastIssues: Array<{ monthLabel: string; headline: string; lead: string }>;
+  // === Memoria: ultime 6 edizioni pubblicate. Usate dall'AI per cronaca
+  // continuativa (callback espliciti agli eventi raccontati prima) e per
+  // evitare ripetizioni di angoli/aperture. ===
+  lastIssues: Array<{
+    monthLabel: string;
+    headline: string;
+    lead: string;
+    highlights: string[];
+    watchout: string | null;
+  }>;
 
   // === Profilo utente (campi non-null) — context, mai usato come "tu/Marco" ===
   userContext: {
     ageYears: number | null;
     countries: string[];
+    city: string | null;
     trackingYearsActual: number | null;
     goals: string[];
     retirementAgeRange: string | null;
@@ -164,9 +240,11 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
   const monthIsClosed = !useCurrentMonth;
 
   // === Net worth snapshots ===
+  // 24 take per coprire 12 mesi sparkline + YTD anche su anno calendario
+  // largo (gennaio dell'anno scorso ancora reperibile).
   const snapshots = await prisma.netWorthSnapshot.findMany({
     orderBy: { month: "desc" },
-    take: 18, // serve fino al gennaio dell'anno corrente per YTD
+    take: 24,
   });
   if (snapshots.length < 2) return null;
   const sorted = [...snapshots].reverse();
@@ -175,6 +253,17 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
   const eur = current - previous;
   const pct = previous !== 0 ? eur / previous : 0;
 
+  // Liquid NW = liquidity + savings (escluso investments). Snapshot ha
+  // entrambi i campi nullable: fallback a 0 se mancanti, ma se NULL su
+  // entrambi i mesi confrontati il delta è 0 (innocuo).
+  const liquidOf = (s: { liquidity: number | null; savings: number | null }) =>
+    (s.liquidity ?? 0) + (s.savings ?? 0);
+  const investOf = (s: { investments: number | null }) => s.investments ?? 0;
+  const liqCurrent = liquidOf(sorted[sorted.length - 1]);
+  const liqPrevious = liquidOf(sorted[sorted.length - 2]);
+  const liqEur = liqCurrent - liqPrevious;
+  const liqPct = liqPrevious !== 0 ? liqEur / liqPrevious : 0;
+
   // YTD: snapshot più vecchio dell'anno target ancora presente
   const yearStart = sorted.find(
     (s) => s.month.getFullYear() === targetYear && s.month.getMonth() === 0,
@@ -182,6 +271,11 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
   const ytdStart = yearStart?.total ?? sorted[0].total;
   const ytdEur = current - ytdStart;
   const ytdPct = ytdStart !== 0 ? ytdEur / ytdStart : 0;
+
+  // Liquid YTD usa stessa anchor del totale (gennaio anno corrente).
+  const liqYearStart = yearStart ? liquidOf(yearStart) : liquidOf(sorted[0]);
+  const liqYtdEur = liqCurrent - liqYearStart;
+  const liqYtdPct = liqYearStart !== 0 ? liqYtdEur / liqYearStart : 0;
 
   // Streak
   let streakMonths = 0;
@@ -196,6 +290,21 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
     }
   }
   const last6 = sorted.slice(-6).map((s) => s.total);
+  const liquidityLast12Months = sorted.slice(-12).map((s) => liquidOf(s));
+
+  // Pillar breakdown MoM
+  const cur = sorted[sorted.length - 1];
+  const prev = sorted[sorted.length - 2];
+  const pillarDelta = (curr: number, prv: number) => ({
+    current: curr,
+    eurDeltaMoM: curr - prv,
+    pctDeltaMoM: prv !== 0 ? (curr - prv) / prv : 0,
+  });
+  const pillarBreakdown = {
+    liquidity: pillarDelta(cur.liquidity ?? 0, prev.liquidity ?? 0),
+    savings: pillarDelta(cur.savings ?? 0, prev.savings ?? 0),
+    investments: pillarDelta(investOf(cur), investOf(prev)),
+  };
 
   // Milestone: la più alta soglia attraversata fra previous e current
   let milestoneCrossed: IssueInput["milestoneCrossed"] = null;
@@ -565,6 +674,7 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
   const userContext = {
     ageYears,
     countries: profile?.countries ?? [],
+    city: profile?.city || null,
     trackingYearsActual,
     goals: profile?.goals ?? [],
     retirementAgeRange: profile?.retirementAge || null,
@@ -602,6 +712,20 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
     streak: { months: streakMonths, direction },
     last6Months: last6,
     milestoneCrossed,
+    liquidityDelta: {
+      eur: liqEur,
+      pct: liqPct,
+      current: liqCurrent,
+      previous: liqPrevious,
+    },
+    liquidityYtd: {
+      eur: liqYtdEur,
+      pct: liqYtdPct,
+      current: liqCurrent,
+      startOfYear: liqYearStart,
+    },
+    liquidityLast12Months,
+    pillarBreakdown,
     monthIncome,
     monthExpense,
     savingsRate,
@@ -613,6 +737,20 @@ export async function buildIssueInput(): Promise<IssueInput | null> {
     worstStockPosition,
     cryptoTotalGain,
     anomalies: anomalies.slice(0, 3),
+    anniversaries: await detectAnniversaries({
+      now,
+      targetYear,
+      targetMonth,
+    }),
+    forwardLooking: await buildForwardLooking(now),
+    events: await detectEvents({
+      now,
+      targetYear,
+      targetMonth,
+      monthDelta: { eur, pct, current, previous },
+      milestoneCrossed,
+      anomalies,
+    }),
     interestBearingAccounts,
     opportunities: opportunities.slice(0, 5),
     mortgages: mortgagesAgg,
@@ -753,32 +891,397 @@ function computeLens(year: number, monthIdx: number): {
 async function loadLastIssues(
   targetYear: number,
   targetMonth: number,
-): Promise<Array<{ monthLabel: string; headline: string; lead: string }>> {
+): Promise<
+  Array<{
+    monthLabel: string;
+    headline: string;
+    lead: string;
+    highlights: string[];
+    watchout: string | null;
+  }>
+> {
+  // Take 7 per garantire 6 utili anche dopo skip del target. Le issue sono
+  // ordinate desc per chiave (YYYY-MM stringa lex-sortable), quindi la
+  // più recente è in cima.
   const recent = await prisma.setting.findMany({
     where: { key: { startsWith: "insights.networth." } },
     orderBy: { key: "desc" },
-    take: 6,
+    take: 7,
   });
   const targetKey = `insights.networth.${targetYear}-${String(targetMonth + 1).padStart(2, "0")}`;
-  const out: Array<{ monthLabel: string; headline: string; lead: string }> = [];
+  const out: Array<{
+    monthLabel: string;
+    headline: string;
+    lead: string;
+    highlights: string[];
+    watchout: string | null;
+  }> = [];
   for (const s of recent) {
     if (s.key === targetKey) continue;
-    if (out.length >= 2) break;
+    if (out.length >= 6) break;
     try {
-      const parsed = JSON.parse(s.value) as { headline?: string; lead?: string };
+      const parsed = JSON.parse(s.value) as {
+        headline?: string;
+        lead?: string;
+        highlights?: unknown;
+        watchout?: unknown;
+      };
       if (typeof parsed.headline !== "string") continue;
       const m = s.key.match(/(\d{4})-(\d{2})$/);
       if (!m) continue;
       const monthIdx = parseInt(m[2], 10) - 1;
       const label = `${MONTH_NAMES_IT[monthIdx]} ${m[1]}`;
+      const highlights = Array.isArray(parsed.highlights)
+        ? parsed.highlights.filter((h): h is string => typeof h === "string")
+        : [];
+      const watchout =
+        typeof parsed.watchout === "string" && parsed.watchout.trim()
+          ? parsed.watchout
+          : null;
       out.push({
         monthLabel: label,
         headline: parsed.headline,
         lead: parsed.lead ?? "",
+        highlights,
+        watchout,
       });
     } catch {
       // Setting con value non-JSON, skip
     }
   }
   return out;
+}
+
+/**
+ * Detect "eventi straordinari" del periodo per il widget Piggybird Finance.
+ * Sono signal narrativi che l'AI tesse nella cronaca: cambi strutturali di
+ * vita finanziaria che giustificano l'andamento dei numeri.
+ *
+ * Tipologie:
+ *  - estate-purchase: nuovo `RealEstate.purchaseDate` negli ultimi 180gg
+ *    (6 mesi: l'arredamento e il setup di una casa post-rogito durano mesi,
+ *    non settimane — narrativamente l'evento è ancora "fresco").
+ *  - mortgage-start: `mortgageStartDate` negli ultimi 90gg
+ *  - nw-inversion: monthDelta MoM < -5% (drawdown forte)
+ *  - category-spike: derivato da `anomalies` (>200% vs media 6m)
+ *  - milestone-crossed: pass-through del milestone già calcolato
+ */
+async function detectEvents(args: {
+  now: Date;
+  targetYear: number;
+  targetMonth: number;
+  monthDelta: { eur: number; pct: number; current: number; previous: number };
+  milestoneCrossed: IssueInput["milestoneCrossed"];
+  anomalies: IssueInput["anomalies"];
+}): Promise<IssueInput["events"]> {
+  const events: IssueInput["events"] = [];
+  const nowMs = args.now.getTime();
+  const ms180d = 180 * 86_400_000;
+  const ms90d = 90 * 86_400_000;
+
+  // 1. Estate purchase recente (ultimi 180gg = 6 mesi)
+  const estates = await prisma.realEstate.findMany({
+    where: {
+      active: true,
+      holding: "owned",
+      purchaseDate: { not: null, gte: new Date(nowMs - ms180d) },
+    },
+    select: {
+      name: true,
+      purchaseDate: true,
+      purchasePrice: true,
+      city: true,
+    },
+  });
+  for (const e of estates) {
+    if (!e.purchaseDate) continue;
+    events.push({
+      type: "estate-purchase",
+      label: e.city ? `Acquisto ${e.name} (${e.city})` : `Acquisto ${e.name}`,
+      eurAmount: e.purchasePrice ?? undefined,
+      dateIso: e.purchaseDate.toISOString(),
+    });
+  }
+
+  // 2. Mortgage start recente (ultimi 90gg)
+  const newMortgages = await prisma.realEstate.findMany({
+    where: {
+      active: true,
+      mortgageStartDate: { not: null, gte: new Date(nowMs - ms90d) },
+      mortgageAmount: { not: null },
+    },
+    select: {
+      name: true,
+      mortgageStartDate: true,
+      mortgageAmount: true,
+      mortgageRate: true,
+      mortgageDurationMonths: true,
+      mortgageMonthlyPayment: true,
+    },
+  });
+  for (const m of newMortgages) {
+    if (!m.mortgageStartDate) continue;
+    const ratePart =
+      m.mortgageRate != null ? ` al ${m.mortgageRate.toFixed(2)}%` : "";
+    const durationPart =
+      m.mortgageDurationMonths != null
+        ? ` per ${Math.round(m.mortgageDurationMonths / 12)} anni`
+        : "";
+    const paymentPart =
+      m.mortgageMonthlyPayment != null
+        ? `rata €${Math.round(m.mortgageMonthlyPayment)}/mese`
+        : "";
+    events.push({
+      type: "mortgage-start",
+      label: `Mutuo nuovo su ${m.name}${ratePart}${durationPart}`,
+      eurAmount: m.mortgageAmount ?? undefined,
+      dateIso: m.mortgageStartDate.toISOString(),
+      context: paymentPart || undefined,
+    });
+  }
+
+  // 3. NW inversion: drawdown >5% nel mese
+  if (args.monthDelta.pct < -0.05) {
+    events.push({
+      type: "nw-inversion",
+      label: `Drawdown del mese: NW ${(args.monthDelta.pct * 100).toFixed(1)}% (€${Math.round(args.monthDelta.eur)})`,
+      eurAmount: args.monthDelta.eur,
+    });
+  }
+
+  // 4. Category spike: top 2 anomalies con >200% di delta
+  for (const a of args.anomalies.slice(0, 2)) {
+    if (a.pctChange < 200) continue;
+    events.push({
+      type: "category-spike",
+      label: `Spesa "${a.category}" a €${Math.round(a.thisMonth)} (+${Math.round(a.pctChange)}% vs media 6m)`,
+      eurAmount: a.thisMonth,
+      context: `Media 6m: €${Math.round(a.avg6m)}`,
+    });
+  }
+
+  // 5. Milestone crossed: pass-through
+  if (args.milestoneCrossed) {
+    events.push({
+      type: "milestone-crossed",
+      label: `Soglia €${Math.round(args.milestoneCrossed.threshold / 1000)}K attraversata`,
+      eurAmount: args.milestoneCrossed.threshold,
+    });
+  }
+
+  return events;
+}
+
+/**
+ * Detect "anniversari" finanziari: tx grandi (>€500) che si ripetono YoY.
+ * Per ogni pattern (raggruppato su beneficiary normalizzato + categoryId)
+ * trovato nello stesso mese di anni precedenti, controlla:
+ *   - "arrived-as-expected": tx simile arrivata quest'anno entro il window
+ *   - "scheduled-future": tx programmata futura (confirmed=false o date>oggi)
+ *   - "missing": niente in arrivo, l'anniversary è "saltato"
+ *
+ * L'AI usa questo per scrivere "il bonus Courage di maggio (l'anno scorso
+ * €3K) non è ancora arrivato — c'è una tx programmata per giugno". Il caso
+ * "missing senza scheduled" è il più narrativamente forte: anomalia silente.
+ */
+async function detectAnniversaries(args: {
+  now: Date;
+  targetYear: number;
+  targetMonth: number;
+}): Promise<IssueInput["anniversaries"]> {
+  const { targetYear, targetMonth } = args;
+  const ANNIVERSARY_THRESHOLD = 500; // €
+  const TX_LIMIT = 200; // safety cap
+
+  // Stesso mese degli ultimi 2 anni precedenti (target_year - 1, -2)
+  const out: IssueInput["anniversaries"] = [];
+  const lastYear = targetYear - 1;
+
+  const lastYearStart = new Date(Date.UTC(lastYear, targetMonth, 1));
+  const lastYearEnd = new Date(Date.UTC(lastYear, targetMonth + 1, 1));
+
+  const historicalTxs = await prisma.transaction.findMany({
+    where: {
+      date: { gte: lastYearStart, lt: lastYearEnd },
+      transferGroupId: null,
+      confirmed: true,
+      OR: [
+        { amount: { gte: ANNIVERSARY_THRESHOLD } },
+        { amount: { lte: -ANNIVERSARY_THRESHOLD } },
+      ],
+    },
+    select: { amount: true, beneficiary: true, categoryId: true, date: true },
+    take: TX_LIMIT,
+  });
+
+  if (historicalTxs.length === 0) return out;
+
+  // Group historical by (normalized beneficiary, categoryId, sign)
+  type Key = string;
+  const groups = new Map<
+    Key,
+    { beneficiary: string; categoryId: string | null; sign: number; totalEur: number; count: number }
+  >();
+  function normBen(s: string | null): string {
+    if (!s) return "";
+    return s.toLowerCase().trim().replace(/\s+/g, " ");
+  }
+  for (const t of historicalTxs) {
+    const ben = normBen(t.beneficiary);
+    if (!ben) continue;
+    const sign = t.amount > 0 ? 1 : -1;
+    const k = `${ben}|${t.categoryId ?? ""}|${sign}`;
+    const g = groups.get(k) ?? {
+      beneficiary: t.beneficiary ?? ben,
+      categoryId: t.categoryId,
+      sign,
+      totalEur: 0,
+      count: 0,
+    };
+    g.totalEur += t.amount;
+    g.count += 1;
+    groups.set(k, g);
+  }
+
+  // Per ogni gruppo storico, controlla quest'anno entro target month ±60gg
+  // (passato e futuro) per match (amount entro ±30%, stesso beneficiary).
+  const thisYearStart = new Date(Date.UTC(targetYear, targetMonth - 2, 1));
+  const thisYearEnd = new Date(Date.UTC(targetYear, targetMonth + 3, 1));
+  const todayMs = args.now.getTime();
+
+  for (const g of groups.values()) {
+    if (out.length >= 5) break; // cap per non inflazionare il prompt
+    if (Math.abs(g.totalEur) < ANNIVERSARY_THRESHOLD) continue;
+    const expected = Math.abs(g.totalEur);
+    const candidates = await prisma.transaction.findMany({
+      where: {
+        date: { gte: thisYearStart, lt: thisYearEnd },
+        transferGroupId: null,
+        beneficiary: { contains: g.beneficiary.split(" ")[0] }, // prefix loose match
+      },
+      select: {
+        amount: true,
+        beneficiary: true,
+        date: true,
+        confirmed: true,
+        categoryId: true,
+      },
+      take: 30,
+    });
+    // Filter: stesso segno, amount entro ±30% del totale storico,
+    // beneficiary normalizzato match
+    const matching = candidates.filter((c) => {
+      if (Math.sign(c.amount) !== g.sign) return false;
+      const ratio = Math.abs(c.amount) / expected;
+      if (ratio < 0.7 || ratio > 1.5) return false;
+      return normBen(c.beneficiary).includes(g.beneficiary.split(" ")[0].toLowerCase());
+    });
+    const arrived = matching.find(
+      (c) => c.confirmed && c.date.getTime() <= todayMs,
+    );
+    const scheduled = matching.find(
+      (c) => !arrived && (c.date.getTime() > todayMs || !c.confirmed),
+    );
+
+    const monthLabel = `${MONTH_NAMES_IT[targetMonth]} ${lastYear}`;
+    if (arrived) {
+      out.push({
+        pattern: g.beneficiary,
+        lastYearLabel: monthLabel,
+        lastYearEur: Math.round(expected),
+        status: "arrived-as-expected",
+        thisYearEur: Math.round(Math.abs(arrived.amount)),
+        thisYearNote: `arrivato il ${arrived.date.toISOString().slice(0, 10)}`,
+      });
+    } else if (scheduled) {
+      out.push({
+        pattern: g.beneficiary,
+        lastYearLabel: monthLabel,
+        lastYearEur: Math.round(expected),
+        status: "scheduled-future",
+        thisYearEur: Math.round(Math.abs(scheduled.amount)),
+        thisYearNote: `programmato per ${scheduled.date.toISOString().slice(0, 10)}`,
+      });
+    } else {
+      out.push({
+        pattern: g.beneficiary,
+        lastYearLabel: monthLabel,
+        lastYearEur: Math.round(expected),
+        status: "missing",
+        thisYearEur: null,
+        thisYearNote: `non ancora visto né programmato`,
+      });
+    }
+  }
+
+  return out;
+}
+
+/**
+ * Costruisce l'agenda finanziaria dei prossimi 60gg per il widget Piggybird
+ * Finance. Legge tx programmate (date>oggi o confirmed=false), aggrega
+ * income/expense attesi, isola gli "eventi grossi" (>€500) con data e
+ * label.
+ *
+ * Esclude transfer interni: quelli si annullano fra conti dell'utente.
+ *
+ * Nota: ricorrenze programmate (Netflix, mutuo, ecc.) sono già in DB con
+ * confirmed=false o date>oggi → vengono incluse automaticamente. Niente
+ * forecasting fantasioso, solo dati reali dal DB.
+ */
+async function buildForwardLooking(
+  now: Date,
+): Promise<IssueInput["forwardLooking"]> {
+  const WINDOW_DAYS = 60;
+  const BIG_THRESHOLD = 500;
+  const horizon = new Date(now.getTime() + WINDOW_DAYS * 86_400_000);
+
+  const txs = await prisma.transaction.findMany({
+    where: {
+      transferGroupId: null,
+      date: { lte: horizon },
+      OR: [{ date: { gt: now } }, { confirmed: false }],
+    },
+    select: {
+      amount: true,
+      date: true,
+      beneficiary: true,
+      category: { select: { name: true, emoji: true } },
+      account: { select: { ownershipShare: true } },
+      ownershipShare: true,
+    },
+    orderBy: { date: "asc" },
+    take: 200,
+  });
+
+  let expectedIncomeEur = 0;
+  let expectedExpenseEur = 0;
+  const bigItems: IssueInput["forwardLooking"]["bigItems"] = [];
+
+  for (const t of txs) {
+    const share = t.ownershipShare ?? t.account.ownershipShare;
+    const eff = t.amount * share;
+    if (eff > 0) expectedIncomeEur += eff;
+    else expectedExpenseEur += Math.abs(eff);
+
+    if (Math.abs(eff) >= BIG_THRESHOLD && bigItems.length < 8) {
+      const label =
+        t.beneficiary ||
+        t.category?.name ||
+        (eff > 0 ? "Entrata programmata" : "Uscita programmata");
+      bigItems.push({
+        dateIso: t.date.toISOString(),
+        label,
+        amountEur: Math.round(eff),
+      });
+    }
+  }
+
+  return {
+    windowDays: WINDOW_DAYS,
+    expectedIncomeEur: Math.round(expectedIncomeEur),
+    expectedExpenseEur: Math.round(expectedExpenseEur),
+    expectedNetEur: Math.round(expectedIncomeEur - expectedExpenseEur),
+    bigItems,
+  };
 }

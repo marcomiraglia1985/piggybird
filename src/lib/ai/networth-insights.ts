@@ -64,10 +64,84 @@ diversa (ruota mensilmente). Trovi 'lens' nel payload: è il faro narrativo
 del numero. NON costringerti a ignorare le altre informazioni, ma il headline
 e il primo paragrafo del lead DEVONO derivare dall'angolo del lens.
 
-MEMORIA — nel payload trovi 'lastIssues' (gli ultimi 1-2 numeri). NON ripetere
-gli stessi headline o le stesse aperture. Cambia angolo, registro, struttura.
-Se il numero precedente apriva con il net worth, questo apre con un'altra
-storia. Se il precedente era ironico, questo è più sobrio. Varietà è la regola.
+LIQUID NW + PILLAR BREAKDOWN — il payload contiene 'liquidNetWorth' (cash +
+savings, escluso investments) e 'pillarBreakdown' con il delta MoM di ogni
+pillar separatamente. Sono storie diverse dal NW totale: il totale può
+salire perché crescono gli investimenti mentre la liquidità si erode.
+
+USA QUESTI DATI per inquadrare correttamente:
+  - Se il NW totale sale ma 'pillarBreakdown.liquidity.momEur' è negativo →
+    "il portafoglio cresce ma la cassa scende: stai trasformando liquidità
+    in asset (acquisto casa, investimento)". Inverso → "il NW si gonfia
+    di liquidità ma niente sta venendo investito".
+  - Se 'liquidNetWorth.momEur' è positivo ma piccolo e 'monthDelta.eur'
+    è grande → "il movimento è quasi tutto investments performance, non
+    risparmio reale".
+  - last12Months della liquidità rivela trend lungo: discesa lenta vs
+    risalita improvvisa. Citalo se rilevante.
+
+NON ripetere i numeri del NW totale: parla di pillar/liquid solo quando
+aggiunge informazione nuova. Se il NW totale sale del 3% e tutti i pillar
+salgono in modo uniforme, niente da raccontare oltre.
+
+FORWARD-LOOKING — nel payload trovi 'forwardLooking' con l'agenda dei
+prossimi 60gg: tx programmate (date>oggi o confirmed=false) aggregate in
+income/expense atteso + bigItems (singoli > €500). USALO per chiudere
+l'edizione con una sezione "cosa aspettarsi": importi attesi, eventi
+specifici (mutuo, bonus programmato, rate), e — se rilevante — saldo netto
+atteso a fine periodo. Niente forecasting fantasioso oltre il dato: tutto
+ciò che è qui è già nel DB. Esempio output: "In arrivo nei prossimi 30
+giorni: €3.5K bonus Courage previsto per il 12 giugno, −€880 mutuo Casa
+Roma il 1 giugno; saldo atteso a +€2.6K netto." Inserire questa
+osservazione nel watchout o come ultimo highlight quando ci sono
+bigItems significativi.
+
+ANNIVERSARI — nel payload trovi 'anniversaries': pattern ricorrenti YoY
+(es. bonus annuale, premi assicurazione) con 3 stati possibili:
+  - "arrived-as-expected": tx attesa è arrivata, importo simile → callback
+    breve ("il bonus Courage di maggio si conferma sui livelli dell'anno
+    scorso").
+  - "scheduled-future": tx programmata futura (es. "atteso 12 giugno") →
+    "il bonus Courage di maggio è slittato a giugno: in arrivo €X".
+  - "missing": atteso ma silente, niente in arrivo → SEGNALE FORTE: "il
+    bonus Courage di maggio non è ancora arrivato e nemmeno programmato".
+Includere queste osservazioni nel watchout o negli highlights quando lo
+status è missing/scheduled-future. Per arrived-as-expected basta un
+accenno se non c'è nulla di più rilevante.
+
+EVENTI STRAORDINARI — nel payload trovi 'events': cambi strutturali del
+periodo (acquisto immobile, mutuo nuovo, drawdown forte, spike categoria,
+milestone). Sono PRECEDENZA NARRATIVA: se presenti, l'headline e/o il lead
+DEVONO inquadrarli come spiegazione del mese. Esempio: con
+event "estate-purchase Casa Roma €280K il 12 marzo", il lead può aprire
+"L'acquisto di Casa Roma a marzo riscrive il bilancio: i €280K assorbono
+liquidità e si vede nel net worth in calo del 15%". Senza eventi, il numero
+torna a essere normale cronaca cashflow/portfolio.
+
+CRONACA CONTINUATIVA — nel payload trovi 'lastIssues' (le ultime fino a 6
+edizioni con headline + lead + highlights + watchout). USALE attivamente:
+
+  1. CALLBACK ESPLICITO: se un evento raccontato in un numero precedente è
+     evoluto (continua, si è chiuso, è cambiato di tono), riferisciti
+     esplicitamente: "Il piano arredamento aperto a marzo si chiude
+     definitivamente", "Il bonus Courage atteso da maggio (cfr. numero
+     precedente) è arrivato in giugno". Questo trasforma il widget in una
+     rivista finanziaria coerente nel tempo, non in N analisi scollegate.
+
+  2. EVITA RIPETIZIONI: non ripetere headline simili o stesse aperture
+     consecutivi. Se il numero precedente apriva con il net worth, questo
+     apre da un'altra storia. Se il precedente era ironico, questo più sobrio.
+
+  3. WATCHOUT FOLLOW-UP: se l'edizione precedente aveva un watchout
+     (concentrazione, anomalia spesa, FX exposure) e il valore corrente
+     mostra che è migliorato/peggiorato/risolto, dichiararlo nel testo
+     ("la concentrazione BTC al 35% segnalata a marzo è scesa al 28%").
+
+  4. LINGUAGGIO COERENTE: mantieni i NOMI usati nelle edizioni precedenti
+     (es. "Casa Tirano" non improvvisamente "il nuovo immobile") per non
+     spezzare la cronaca.
+
+Le ultime issue sono ordinate dalla più recente in giù.
 
 MACRO CONTEXT — nel payload trovi 'macro' (ECB rate, inflazione Eurozone,
 EUR/USD, S&P 1m, BTC 1m). Sono signal pubblici REALI. Quando un numero macro
@@ -76,7 +150,7 @@ S&P vs best stock, EUR/USD vs FX exposure), tessilo nella narrazione in modo
 NATURALE — non come elenco. Mai inventare numeri macro: usa solo quelli del
 payload. Se un macro è null (non disponibile / non rilevante), ignoralo.
 
-USER CONTEXT — nel payload trovi 'userContext' con dati profilo: età, paesi,
+USER CONTEXT — nel payload trovi 'userContext' con dati profilo: età, paesi, città,
 anni di tracking, obiettivi, età pensionamento attesa, tolleranza al rischio,
 stato familiare, figli, professione, tipo abitazione. SONO CONTEXT, non
 soggetto della frase. REGOLE STRETTE:
@@ -90,6 +164,10 @@ soggetto della frase. REGOLE STRETTE:
 - Se un campo è null/empty/[], NON menzionarlo. Niente "non specificato".
 - Mai usare nome/email anche se forniti. Mai indirizzi.
 - Mai fare benchmarking nazionale se countries non è valorizzato.
+- Se city è valorizzata, sentiti libero di usarla per riferimenti contestuali
+  (es. "il costo vita milanese", "il mercato immobiliare di Parigi") quando
+  effettivamente rilevante. Non forzare riferimenti urbani se non aggiungono
+  valore. Mai indirizzi specifici, mai quartieri.
 
 PERSONALITY LAYERS — nel payload trovi 'personalityLayers' (null se l'utente
 non ha fatto il test). Se presente contiene archetipo + axes (planning/risk/
@@ -134,6 +212,31 @@ export async function generateMonthlyIssue(
       ytdPct: +(input.ytd.pct * 100).toFixed(1),
       streakMonths: input.streak.months,
       streakDirection: input.streak.direction,
+    },
+    liquidNetWorth: {
+      currentEur: Math.round(input.liquidityDelta.current),
+      momEur: Math.round(input.liquidityDelta.eur),
+      momPct: +(input.liquidityDelta.pct * 100).toFixed(1),
+      ytdEur: Math.round(input.liquidityYtd.eur),
+      ytdPct: +(input.liquidityYtd.pct * 100).toFixed(1),
+      last12Months: input.liquidityLast12Months.map((v) => Math.round(v)),
+    },
+    pillarBreakdown: {
+      liquidity: {
+        currentEur: Math.round(input.pillarBreakdown.liquidity.current),
+        momEur: Math.round(input.pillarBreakdown.liquidity.eurDeltaMoM),
+        momPct: +(input.pillarBreakdown.liquidity.pctDeltaMoM * 100).toFixed(1),
+      },
+      savings: {
+        currentEur: Math.round(input.pillarBreakdown.savings.current),
+        momEur: Math.round(input.pillarBreakdown.savings.eurDeltaMoM),
+        momPct: +(input.pillarBreakdown.savings.pctDeltaMoM * 100).toFixed(1),
+      },
+      investments: {
+        currentEur: Math.round(input.pillarBreakdown.investments.current),
+        momEur: Math.round(input.pillarBreakdown.investments.eurDeltaMoM),
+        momPct: +(input.pillarBreakdown.investments.pctDeltaMoM * 100).toFixed(1),
+      },
     },
     milestoneCrossed: input.milestoneCrossed,
     cashflow: {
@@ -186,6 +289,9 @@ export async function generateMonthlyIssue(
       avg6mEur: Math.round(a.avg6m),
       pctChange: Math.round(a.pctChange),
     })),
+    events: input.events,
+    anniversaries: input.anniversaries,
+    forwardLooking: input.forwardLooking,
     interestBearingAccounts: input.interestBearingAccounts.map((a) => ({
       name: a.name,
       type: a.type,

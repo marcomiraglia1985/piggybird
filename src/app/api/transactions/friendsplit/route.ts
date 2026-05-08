@@ -221,6 +221,37 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Guard anti-double-submit: se nei 10s precedenti esiste già una tx con
+  // stessi (date, amount, accountId, notes) per il PRIMO leg da inserire,
+  // assumiamo che sia un re-submit (double click, retry, dev hot-reload) e
+  // ritorniamo OK senza re-inserire. Pattern documentato: i nostri
+  // duplicati friendsplit avevano createdAt a 3ms di distanza.
+  const probe = txs[0];
+  const dupeSince = new Date(Date.now() - 10_000);
+  const existing = await prisma.transaction.findFirst({
+    where: {
+      date: probe.date,
+      amount: probe.amount,
+      accountId: probe.accountId,
+      notes: probe.notes,
+      createdAt: { gte: dupeSince },
+    },
+    select: { id: true },
+  });
+  if (existing) {
+    return NextResponse.json({
+      created: 0,
+      txIds: [existing.id],
+      duplicate: true,
+      summary: {
+        isSelfPayer,
+        myShare: Math.round(myShare * 100) / 100,
+        totalAmount: data.totalAmount,
+        participantsCount: data.participants.length,
+      },
+    });
+  }
+
   // Insert atomico
   const created = await prisma.$transaction(
     txs.map((t) => prisma.transaction.create({ data: t })),

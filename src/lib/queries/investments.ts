@@ -308,6 +308,18 @@ export const getSpyMonthlySeries = () => fetchYahooMonthlySeries("SPY");
 /** BlackRock Global Allocation Fund — il flagship attivo di Larry Fink dal 1989. */
 export const getMdloxMonthlySeries = () => fetchYahooMonthlySeries("MDLOX");
 
+/**
+ * Storico mensile EUR/USD (USD per 1 EUR — convenzione Yahoo `EURUSD=X`).
+ *
+ * Usato per convertire le serie benchmark (SPY/MDLOX/BRK-B sono USD-denominated)
+ * in EUR prima del confronto col portfolio EUR-denominated dell'utente.
+ *
+ * Senza questa normalizzazione il widget S&P Beat mescola unità: i cashflow
+ * sono in EUR e i prezzi sono in USD → il rapporto `todayPrice/price` cattura
+ * solo la crescita USD del benchmark, non l'effetto FX EUR/USD nel periodo.
+ */
+export const getEurUsdMonthlySeries = () => fetchYahooMonthlySeries("EURUSD=X");
+
 /** Berkshire Hathaway Class B — proxy per la performance di Warren Buffett.
  *  Nota: ticker Yahoo è BRK-B (con dash), NON BRK.B come si trova altrove. */
 export const getBrkbMonthlySeries = () => fetchYahooMonthlySeries("BRK-B");

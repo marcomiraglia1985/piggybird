@@ -56,6 +56,10 @@ export async function register() {
             delete event.request.headers["cookie"];
           }
         }
+        // Defensive: niente email completa neanche in user (server-side
+        // setUser eredita da getUserProfile più sotto, qui ci accertiamo
+        // che solo il pseudonimo username arrivi).
+        if (event.user?.email) delete event.user.email;
         return event;
       },
     });
@@ -68,9 +72,10 @@ export async function register() {
       const { getUserProfile } = await import("./src/lib/user-profile");
       const profile = await getUserProfile();
       if (profile.email) {
+        // Solo username = email-local-part. Niente email piena né nome.
+        // Vedi sentry-user-context.tsx per stesso pattern client-side.
         Sentry.setUser({
-          email: profile.email,
-          username: profile.name || profile.email.split("@")[0],
+          username: profile.email.split("@")[0],
         });
       }
     } catch {

@@ -446,12 +446,19 @@ export async function POST(req: NextRequest) {
     };
   });
 
-  // User profile context (paesi) come prefix stabile del system.
-  // Solo i campi NON vuoti vengono inclusi per non sporcare il prompt.
-  const profileBlock =
-    userProfile.countries.length > 0
-      ? `\n\nCONTEXT UTENTE (usa per disambiguare estate-linked):\n- Paesi: ${userProfile.countries.join(", ")}`
-      : "";
+  // User profile context come prefix stabile del system. Solo i campi NON
+  // vuoti vengono inclusi per non sporcare il prompt. Useful per disambiguare
+  // beneficiary locali, regimi fiscali, riferimenti regionali.
+  const profileLines: string[] = [];
+  if (userProfile.countries.length > 0) {
+    profileLines.push(`Paesi: ${userProfile.countries.join(", ")}`);
+  }
+  if (userProfile.city) profileLines.push(`Città: ${userProfile.city}`);
+  if (userProfile.familyStatus) profileLines.push(`Stato familiare: ${userProfile.familyStatus}`);
+  if (userProfile.profession) profileLines.push(`Professione: ${userProfile.profession}`);
+  const profileBlock = profileLines.length
+    ? `\n\nCONTEXT UTENTE (usa per disambiguare):\n- ${profileLines.join("\n- ")}`
+    : "";
 
   const system = `Sei un assistente di categorizzazione finanziaria. Ricevi GRUPPI di movimenti con stesso beneficiary, e devi suggerire UNA categoria per ogni groupId (verrà applicata a tutte le tx del gruppo).${profileBlock}
 

@@ -71,7 +71,7 @@ SEZIONI tipiche (scegli 4-6 in base al payload, non sempre tutte):
 - "Concentrazione": flagga posizioni >25% del portfolio o >30% degli stocks. Inquadra rispetto al profilo behavioral.
 - "Performance": confronta con benchmark realistici (S&P, MSCI World). Spiega i gap. Distingui realized vs unrealized.
 - "Allineamento al profilo": confronta riskTolerance dichiarato vs allocation reale. Segnala discrepanze.
-- "FX & fiscalità": % non-EUR, regime fiscale rilevante (capital gain IT 26%, FR PFU 30%, ecc. solo se countries lo giustifica).
+- "FX & fiscalità": % non-EUR, regime fiscale rilevante (capital gain IT 26%, FR PFU 30%, ecc. solo se countries lo giustifica). Se city è valorizzata e rilevante (es. residenza fiscale specifica), citala per ancorare il contesto.
 - "Cash idle nel broker": tradingCash significativo non re-investito.
 - "Regime macro": VIX/T10y/EUR-USD inquadra il momento e cosa significa per il portfolio.
 

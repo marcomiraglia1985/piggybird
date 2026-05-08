@@ -858,12 +858,12 @@ export function TransactionsTable({
                           {t.amount > 0 ? "+" : ""}
                           {formatEUR(t.amount)}
                         </span>
-                        {t.amount > 0 && !isTransfer && (
+                        {!isTransfer && (
                           <button
                             type="button"
                             onClick={() => setEditingTx(t)}
                             className="size-6 inline-flex items-center justify-center rounded hover:bg-[var(--surface-2)] text-[var(--fg-subtle)] hover:text-[var(--fg)] opacity-0 group-hover:opacity-100 transition-opacity"
-                            title="Modifica entrata"
+                            title="Modifica movimento"
                           >
                             <Pencil className="size-3" />
                           </button>

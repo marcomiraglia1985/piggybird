@@ -79,13 +79,22 @@ export type PortfolioInput = {
   // === Macro context (extended: VIX, MSCI, T10y, Gold) ===
   macro: MacroContext;
 
-  // === User context (riusato da PF) ===
+  // === User context — completo, allineato col detector PF (lib/insights/
+  // detector.ts). Marco ha esplicitamente chiesto che tutti i dati del
+  // profilo siano propagati ovunque ai paragoni/statistiche AI.
+  // Vedi feedback: dato profilo importantissimo per ogni paragone. ===
   userContext: {
     ageYears: number | null;
     countries: string[];
-    retirementAgeRange: string | null;
-    riskToleranceDeclared: string | null;
+    city: string | null;
+    trackingYearsActual: number | null;
     goals: string[];
+    retirementAgeRange: string | null;
+    riskTolerance: string | null;
+    familyStatus: string | null;
+    childrenCount: string | null;
+    profession: string | null;
+    housingType: string | null;
   };
 
   // === Personality layers (riusato da PF) ===
@@ -281,12 +290,29 @@ export async function buildPortfolioInput(): Promise<PortfolioInput | null> {
           ),
         )
       : null;
+  // Tracking years: data della prima tx confermata in DB. Proxy semplice:
+  // l'utente ha iniziato a usare l'app quando ha la prima tx.
+  const firstTx = await prisma.transaction.findFirst({
+    where: { confirmed: true },
+    orderBy: { date: "asc" },
+    select: { date: true },
+  });
+  const trackingYearsActual = firstTx
+    ? +(((now.getTime() - firstTx.date.getTime()) / (365.25 * 86_400_000)).toFixed(1))
+    : null;
+
   const userContext = {
     ageYears,
     countries: profile?.countries ?? [],
-    retirementAgeRange: profile?.retirementAge || null,
-    riskToleranceDeclared: profile?.riskTolerance || null,
+    city: profile?.city || null,
+    trackingYearsActual,
     goals: profile?.goals ?? [],
+    retirementAgeRange: profile?.retirementAge || null,
+    riskTolerance: profile?.riskTolerance || null,
+    familyStatus: profile?.familyStatus || null,
+    childrenCount: profile?.childrenCount || null,
+    profession: profile?.profession || null,
+    housingType: profile?.housingType || null,
   };
 
   // === Personality layers ===
