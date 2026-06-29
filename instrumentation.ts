@@ -26,6 +26,15 @@ export async function register() {
       console.error("[instrumentation] ensureMasterKey failed at boot:", e);
       // Defensive retry alla prima encrypt/decrypt (vedi i singoli route handler)
     }
+
+    // Migrazioni dati one-time (backfill hash dedup su DB esistenti dopo upgrade).
+    // Best-effort: un errore qui non deve mai impedire il boot dell'app.
+    try {
+      const { runStartupDataMigrations } = await import("./src/lib/startup-migrations");
+      await runStartupDataMigrations();
+    } catch (e) {
+      console.error("[instrumentation] startup data migrations failed:", e);
+    }
   }
 
   if (!process.env.SENTRY_DSN) return; // skip Sentry se non configurato
