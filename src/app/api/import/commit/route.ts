@@ -129,16 +129,27 @@ export async function POST(req: NextRequest) {
       // (causale) e la category se mancante.
       const existing = await prisma.transaction.findUnique({
         where: { id: r.existingTxId },
-        select: { beneficiary: true, notes: true, categoryId: true },
+        select: { beneficiary: true, notes: true, categoryId: true, date: true, amount: true },
       });
       if (existing) {
+        const finalBeneficiary = existing.beneficiary || r.beneficiary || null;
+        const finalNotes = existing.notes || r.notes || null;
         await prisma.transaction.update({
           where: { id: r.existingTxId },
           data: {
             // Solo se vuoto sull'esistente
-            beneficiary: existing.beneficiary || r.beneficiary || null,
-            notes: existing.notes || r.notes || null,
+            beneficiary: finalBeneficiary,
+            notes: finalNotes,
             categoryId: existing.categoryId ?? r.categoryId ?? null,
+            // Ricalcola sourceHash: il merge può aver riempito beneficiary/notes
+            // (parte del descrittore) → l'hash vecchio sarebbe stale e un futuro
+            // re-import di questa stessa riga creerebbe un duplicato.
+            sourceHash: computeSourceHash({
+              date: existing.date,
+              amount: existing.amount,
+              beneficiary: finalBeneficiary,
+              notes: finalNotes,
+            }),
           },
         });
         merged++;
@@ -158,6 +169,12 @@ export async function POST(req: NextRequest) {
           beneficiary: r.beneficiary ?? null,
           notes: r.notes ?? null,
           isJoint: r.isJoint ?? false,
+          sourceHash: computeSourceHash({
+            date,
+            amount: r.amount,
+            beneficiary: r.beneficiary ?? null,
+            notes: r.notes ?? null,
+          }),
           year: date.getFullYear(),
           month: date.getMonth() + 1,
         },
@@ -269,6 +286,15 @@ export async function POST(req: NextRequest) {
       const anchor = new Date(`${rec.asOf}T23:59:59.999Z`);
       if (isNaN(anchor.getTime())) continue;
       try {
+        const acc = await prisma.account.findUnique({
+          where: { id: rec.accountId },
+          select: { balanceLastEditedAt: true },
+        });
+        if (!acc) continue;
+        // SOLO IN AVANTI: se l'estratto importato è più VECCHIO dell'ancora
+        // corrente, non ri-ancorare — altrimenti un import storico riporterebbe
+        // il saldo a un valore stantio e farebbe regredire l'ancora.
+        if (acc.balanceLastEditedAt && anchor < acc.balanceLastEditedAt) continue;
         await prisma.account.update({
           where: { id: rec.accountId },
           data: { currentBalance: rec.balance, balanceLastEditedAt: anchor },
