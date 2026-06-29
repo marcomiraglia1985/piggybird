@@ -5,6 +5,8 @@ import {
   listSupportedBrokers,
 } from "@/lib/broker-parsers";
 import { parseAnyBrokerWithFallback } from "@/lib/universal-broker-parser";
+import { rebuildStockPositions } from "@/lib/stock-positions-rebuilder";
+import { refreshAllStockPrices } from "@/lib/stocks-sync";
 
 export const runtime = "nodejs";
 
@@ -109,11 +111,27 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // Dopo l'inserimento dei trade: riaggrega posizioni + TradingCash dallo
+  // storico completo, poi rinfresca i prezzi live e ricalcola il totale.
+  // Best-effort: errori in queste fasi non rollback-ano l'import dei trade,
+  // ma vengono surface-ati nella response come `syncError`.
+  let rebuildSummary: Awaited<ReturnType<typeof rebuildStockPositions>> | null = null;
+  let syncError: string | null = null;
+  try {
+    rebuildSummary = await rebuildStockPositions(platformName);
+    await refreshAllStockPrices(platformName);
+  } catch (e) {
+    syncError = e instanceof Error ? e.message : String(e);
+    console.error("[stock-trades/import] post-import sync failed:", e);
+  }
+
   return NextResponse.json({
     platform: platformName,
     total: parsed.events.length,
     inserted,
     skipped,
+    rebuild: rebuildSummary,
+    syncError,
   });
 }
 

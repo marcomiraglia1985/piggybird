@@ -29,6 +29,13 @@ export type ParsedRow = {
     categoryName: string | null;
   } | null;
   notes?: string | null;
+  /** Saldo progressivo riportato dalla banca dopo questo movimento (colonna
+   *  Saldo/Balance del CSV, quando presente). Alimenta l'auto-riconciliazione
+   *  del saldo conto e la diagnostica di continuità. */
+  bankBalance?: number | null;
+  /** Riga grezza della sorgente (JSON dei campi originali). Persistita per
+   *  audit e per ri-derivare il sourceHash se il parser migliora. */
+  rawLine?: string | null;
   currency: string;
   /** ID che lega due righe formando un transfer interno */
   transferGroupId?: string | null;

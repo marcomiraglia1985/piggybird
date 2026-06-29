@@ -32,18 +32,27 @@ export function listSupportedBrokers(): Array<{ name: string; platform: string }
 }
 
 /**
- * Hash deterministico di un evento per dedup su re-import dello stesso CSV.
- * Combina campi che identificano univocamente un evento.
+ * Hash deterministico e STABILE di un evento per dedup su re-import.
+ *
+ * Stabile = lo stesso evento reale produce sempre lo stesso hash, anche se il
+ * CSV viene riesportato con micro-variazioni. Per questo normalizziamo i campi
+ * rumorosi PRIMA di hashare:
+ *   - date  → troncata al SECONDO (i millisecondi/offset variano tra export)
+ *   - amountEur → 2 decimali (gli spread FR producono drift sul 4° decimale)
+ *   - quantity/pricePerUnit → precisione fissa (rumore float)
+ * Senza questa normalizzazione lo stesso trade rientrava 2 volte (hash diversi)
+ * gonfiando le posizioni. Granularità al secondo: due fill reali allo stesso
+ * secondo con identici qty+importo sono trattati come lo stesso evento.
  */
 export function hashStockEvent(e: StockEvent): string {
   const key = [
     e.platform,
     e.type,
-    e.date,
+    String(e.date).slice(0, 19), // YYYY-MM-DDTHH:MM:SS — niente millisecondi/Z
     e.ticker ?? "",
-    e.quantity ?? "",
-    e.pricePerUnit ?? "",
-    e.amountEur.toFixed(4),
+    e.quantity != null ? Number(e.quantity).toFixed(6) : "",
+    e.pricePerUnit != null ? Number(e.pricePerUnit).toFixed(4) : "",
+    e.amountEur.toFixed(2),
     e.currency,
   ].join("|");
   return createHash("sha256").update(key).digest("hex").slice(0, 32);

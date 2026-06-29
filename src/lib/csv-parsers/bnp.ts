@@ -92,6 +92,8 @@ export function parseBNP(content: string): ParserResult {
   const cLib = idx("Libelle operation");
   const cAmt = idx("Montant operation");
   const cComm = idx("Commentaire operation");
+  // BNP non sempre espone il saldo progressivo per riga: -1 se assente.
+  const cSolde = idx("Solde");
 
   const warnings: string[] = [];
   const rows: ParsedRow[] = [];
@@ -122,6 +124,10 @@ export function parseBNP(content: string): ParserResult {
     const dateStr = date.toISOString().slice(0, 10);
     const externalId = [dateStr, amount.toFixed(2), shortDesc.slice(0, 24)].join("|");
 
+    const soldeRaw = cSolde >= 0 ? (r[cSolde] ?? "").trim() : "";
+    const soldeNum = soldeRaw ? parseAmount(soldeRaw) : 0;
+    const bankBalance = soldeRaw && soldeNum !== 0 ? soldeNum : null;
+
     rows.push({
       externalId,
       date: dateStr,
@@ -130,6 +136,8 @@ export function parseBNP(content: string): ParserResult {
       rawType: bankCategory || undefined,
       suggestedAccount: "BNP Paribas",
       suggestedCategoryEmoji: null,
+      bankBalance,
+      rawLine: JSON.stringify(r),
       currency: "EUR",
       notes: lib + (comm ? ` — ${comm}` : ""),
     });

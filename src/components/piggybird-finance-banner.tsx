@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { Sparkles, ArrowRight } from "lucide-react";
 import { prisma } from "@/lib/prisma";
 import {
@@ -67,13 +66,13 @@ export async function PiggybirdFinanceBanner() {
               alla stampa: un click e l&apos;edizione del mese va in pagina.
             </p>
             <div className="mt-3">
-              <Link
+              <a
                 href="/#piggybird-finance"
                 className="inline-flex items-center gap-1.5 h-9 px-4 rounded-lg bg-gradient-to-br from-amber-400 via-orange-500 to-rose-500 text-white text-sm font-medium shadow-md shadow-orange-500/25 hover:shadow-orange-500/45 font-sans"
               >
                 Vai al numero
                 <ArrowRight className="size-4" />
-              </Link>
+              </a>
             </div>
           </div>
           <PiggybirdFinanceBannerDismiss dismissedKey={dismissKey()} />

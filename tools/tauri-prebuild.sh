@@ -50,6 +50,7 @@ cp -R .next/static/. src-tauri/standalone/.next/static/
 if [ -d "public" ]; then
   cp -R public src-tauri/standalone/public
 fi
+
 # Prisma schema serve a runtime per migrate (ensureMasterKey + first-run setup)
 mkdir -p src-tauri/standalone/prisma
 cp prisma/schema.prisma src-tauri/standalone/prisma/

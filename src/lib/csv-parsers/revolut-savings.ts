@@ -96,6 +96,9 @@ export function parseRevolutSavings(content: string): ParserResult {
       suggestedCategoryName = "Giroconto";
     }
 
+    const saldoStr = (r.Saldo ?? "").trim();
+    const bankBalance = saldoStr ? parseEurAmount(saldoStr) : null;
+
     rows.push({
       externalId,
       date: dateStr,
@@ -104,6 +107,8 @@ export function parseRevolutSavings(content: string): ParserResult {
       suggestedAccount: "Revolut Savings",
       suggestedCategoryEmoji,
       suggestedCategoryName,
+      bankBalance,
+      rawLine: JSON.stringify(r),
       currency: "EUR",
     });
   }

@@ -61,14 +61,19 @@ export async function syncStocksTotal(platform: string) {
     },
     select: { id: true, name: true },
   });
-  if (accounts.length === 1) {
+  // Su match multipli (es. "Revolut Trading" come name + "Revolut X" che ha
+  // provider=revolut-x): preferisci il match per name esatto. Solo se anche
+  // così resta ambiguo, log e skip.
+  const exact = accounts.filter((a) => a.name === platform);
+  const accTarget = exact.length === 1 ? exact[0] : accounts.length === 1 ? accounts[0] : null;
+  if (accTarget) {
     await prisma.account.update({
-      where: { id: accounts[0].id },
+      where: { id: accTarget.id },
       data: { currentBalance: total },
     });
   } else if (accounts.length > 1) {
     console.warn(
-      `[stocks-sync] ${accounts.length} conti matchano platform=${platform}: saldo non aggiornato (mapping ambiguo). Names: ${accounts.map((a) => a.name).join(", ")}`,
+      `[stocks-sync] ${accounts.length} conti matchano platform=${platform} senza name esatto: saldo non aggiornato. Names: ${accounts.map((a) => a.name).join(", ")}`,
     );
   }
 

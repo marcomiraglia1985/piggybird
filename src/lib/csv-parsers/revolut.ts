@@ -29,6 +29,7 @@ const HEADER_MAP: Record<string, string> = {
   Importo: "amount",
   Costo: "fee",
   Valuta: "currency",
+  Stato: "state",
   Saldo: "balance",
 };
 
@@ -58,7 +59,7 @@ export function isRevolut(headers: string[]): boolean {
     ["Type", "Tipo"],
     ["Description", "Descrizione"],
     ["Amount", "Importo"],
-    ["State", "State"],
+    ["State", "Stato"],
   ];
   return required.every((opts) => opts.some((h) => headers.includes(h)));
 }
@@ -134,7 +135,10 @@ export function parseRevolutCSV(content: string): ParserResult {
 
     const product = (r.product ?? "").trim().toLowerCase();
     let suggestedAccount = PRODUCT_TO_ACCOUNT[product] ?? "Revolut";
-    let requireSuggestedAccount = false;
+    // Se il product mappa esplicitamente a un account non-default (Savings,
+    // Vault, ecc.) il parser è sicuro della destinazione — forza il routing
+    // così la riga non finisce sul file-level account a maggioranza.
+    let requireSuggestedAccount = product in PRODUCT_TO_ACCOUNT && suggestedAccount !== "Revolut";
 
     // REVX = Revolut Stocks/Crypto trasferimento
     let suggestedCategoryEmoji: string | null = null;
@@ -167,6 +171,9 @@ export function parseRevolutCSV(content: string): ParserResult {
 
     const externalId = [startedTs, netAmount.toFixed(2), description.slice(0, 24)].join("|");
 
+    const balRaw = parseFloat(r.balance?.replace(",", ".") ?? "");
+    const bankBalance = isFinite(balRaw) ? balRaw : null;
+
     rows.push({
       _ts: startedTs,
       _product: product,
@@ -179,6 +186,8 @@ export function parseRevolutCSV(content: string): ParserResult {
       suggestedAccount,
       requireSuggestedAccount: requireSuggestedAccount || undefined,
       suggestedCategoryEmoji,
+      bankBalance,
+      rawLine: JSON.stringify(raw),
       currency,
     });
   }

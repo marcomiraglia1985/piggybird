@@ -119,6 +119,7 @@ export function parseFineco(content: string): ParserResult {
   const cDesc = colIdx("Descrizione");
   const cDescFull = colIdx("Descrizione_Completa");
   const cState = colIdx("Stato");
+  const cSaldo = colIdx("Saldo"); // -1 se Fineco non lo esporta in questo report
 
   const warnings: string[] = [];
   const rows: ParsedRow[] = [];
@@ -149,6 +150,10 @@ export function parseFineco(content: string): ParserResult {
     const dateStr = date.toISOString().slice(0, 10);
     const externalId = [dateStr, amount.toFixed(2), description.slice(0, 24)].join("|");
 
+    const saldoRaw = cSaldo >= 0 ? (r[cSaldo] ?? "").trim() : "";
+    const saldoNum = saldoRaw ? parseAmount(saldoRaw) : 0;
+    const bankBalance = saldoRaw && saldoNum !== 0 ? saldoNum : null;
+
     rows.push({
       externalId,
       date: dateStr,
@@ -157,6 +162,8 @@ export function parseFineco(content: string): ParserResult {
       rawType: desc,
       suggestedAccount: "Fineco",
       suggestedCategoryEmoji: null,
+      bankBalance,
+      rawLine: JSON.stringify(r),
       currency: "EUR",
       notes: descFull && descFull !== desc ? descFull : null,
     });

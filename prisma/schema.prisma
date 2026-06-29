@@ -150,10 +150,28 @@ model Transaction {
    *  Null = nessuno snapshot, usa Account.ownershipShare correntemente. */
   ownershipShare  Float?
 
+  /** Identità deterministica della riga sorgente: hash di
+   *  data+importo+descrizione normalizzata (vedi lib/source-hash.ts).
+   *  Permette dedup esatta e IDEMPOTENTE sui re-import di periodi
+   *  sovrapposti — scoped per conto via @@index([accountId, sourceHash]).
+   *  Più copie identiche lo stesso giorno coesistono perché il dedup conta
+   *  le occorrenze (N nel CSV vs M già a DB → inserisce max(0, N-M)).
+   *  Null sulle tx pre-feature finché il backfill non le popola. */
+  sourceHash      String?
+  /** Saldo progressivo riportato DALLA BANCA dopo questo movimento (colonna
+   *  Saldo/Balance del CSV, quando presente). Usato per auto-riconciliare il
+   *  saldo del conto all'import e per diagnosticare buchi via continuità.
+   *  Null se la banca non espone il saldo o tx non da CSV. */
+  bankBalance     Float?
+  /** Riga grezza del CSV (JSON dei campi originali della sorgente). Permette
+   *  di ri-derivare sourceHash se il parser migliora + audit. Null se non-CSV. */
+  rawLine         String?
+
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
   @@index([date])
+  @@index([accountId, sourceHash])
   @@index([year, month])
   @@index([accountId])
   @@index([transferGroupId])

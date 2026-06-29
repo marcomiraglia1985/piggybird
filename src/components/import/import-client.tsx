@@ -60,6 +60,10 @@ type ParsedRow = {
   /** Override server-side dell'account scelto nel pair stage (per quirk
    *  Revolut Current → Savings sugli interessi passthrough, ecc.) */
   forceAccountId?: string | null;
+  /** Saldo progressivo della banca dopo la riga (colonna Saldo/Balance). */
+  bankBalance?: number | null;
+  /** Riga grezza del CSV (JSON), persistita per audit/ri-derivazione. */
+  rawLine?: string | null;
 };
 
 type Account = { id: string; name: string; emoji: string | null };
@@ -124,6 +128,9 @@ type Editable = {
   action: "create" | "merge" | "replace";
   /** File CSV di provenienza — utile quando si caricano più CSV in batch. */
   sourceFileName?: string;
+  /** Saldo progressivo della banca + riga grezza (passati al commit). */
+  bankBalance?: number | null;
+  rawLine?: string | null;
 };
 
 export function ImportClient() {
@@ -399,6 +406,8 @@ export function ImportClient() {
           softDuplicate: r.softDuplicateOf ?? null,
           action: r.softDuplicateOf ? "merge" : "create",
           sourceFileName: file.fileName,
+          bankBalance: r.bankBalance ?? null,
+          rawLine: r.rawLine ?? null,
         });
       }
     }
@@ -442,17 +451,50 @@ export function ImportClient() {
       notes: e.notes,
       transferGroupId: e.transferGroupId,
       isJoint: e.isJoint,
+      bankBalance: e.bankBalance ?? null,
+      rawLine: e.rawLine ?? null,
       // Soft-dup actions
       action: e.softDuplicate ? e.action : "create",
       ...(e.softDuplicate && e.action !== "create"
         ? { existingTxId: e.softDuplicate.id }
         : {}),
     }));
+
+    // AUTO-RICONCILIAZIONE: per ogni conto col saldo progressivo, trova il saldo
+    // della riga più recente del suo estratto e mandalo come ancora. Calcolato
+    // su TUTTE le righe parsate (anche i duplicati non inseriti), così il saldo
+    // finale è sempre quello vero. Solo righe NATIVE del file (no forceAccountId:
+    // il saldo di un reroute appartiene al conto del file, non al destinatario).
+    const recMap = new Map<string, { balance: number; asOf: string }>();
+    for (const file of data.files) {
+      const fileAccId = fileAccounts.get(file.fileName);
+      if (!fileAccId) continue;
+      const withBal = file.rows.filter((r) => r.bankBalance != null && !r.forceAccountId);
+      if (withBal.length === 0) continue;
+      // Direzione del CSV: ascending se la prima riga è più vecchia dell'ultima.
+      const ascending = withBal[0].date <= withBal[withBal.length - 1].date;
+      let best: { balance: number; asOf: string } | null = null;
+      for (const r of withBal) {
+        const cand = { balance: r.bankBalance as number, asOf: r.date };
+        if (!best || cand.asOf > best.asOf || (cand.asOf === best.asOf && ascending)) {
+          best = cand;
+        }
+      }
+      if (best) {
+        const prev = recMap.get(fileAccId);
+        if (!prev || best.asOf > prev.asOf) recMap.set(fileAccId, best);
+      }
+    }
+    const reconcile = [...recMap.entries()].map(([accountId, v]) => ({
+      accountId,
+      balance: v.balance,
+      asOf: v.asOf,
+    }));
     try {
       const res = await fetch("/api/import/commit", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ rows, confirmRecurrences }),
+        body: JSON.stringify({ rows, confirmRecurrences, reconcile }),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => null);
@@ -463,6 +505,8 @@ export function ImportClient() {
       const confirmed = json.confirmed ?? 0;
       const merged = json.merged ?? 0;
       const replaced = json.replaced ?? 0;
+      const skipped = json.skipped ?? 0;
+      const reconciled = (json.reconciled ?? []) as { accountId: string; balance: number }[];
       setCommitted(inserted + confirmed + merged + replaced);
       setLastImportKind("bank");
       const parts: string[] = [];
@@ -470,6 +514,13 @@ export function ImportClient() {
       if (merged > 0) parts.push(`${merged} arricchiti (merge)`);
       if (replaced > 0) parts.push(`${replaced} sostituiti`);
       if (confirmed > 0) parts.push(`${confirmed} programmati confermati`);
+      if (skipped > 0) parts.push(`${skipped} già presenti (saltati)`);
+      if (reconciled.length > 0) {
+        const names = reconciled
+          .map((rc) => data.accounts.find((a) => a.id === rc.accountId)?.name)
+          .filter(Boolean);
+        if (names.length > 0) parts.push(`saldo riconciliato: ${names.join(", ")}`);
+      }
       toast({
         title: `Import completato`,
         description: parts.join(" · ") || "0 movimenti",
@@ -481,7 +532,7 @@ export function ImportClient() {
       setError(e instanceof Error ? e.message : "Errore sconosciuto");
       setStage("review");
     }
-  }, [data, edits, router]);
+  }, [data, edits, router, fileAccounts, toast]);
 
   const reset = () => {
     setStage("idle");
