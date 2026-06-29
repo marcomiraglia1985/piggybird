@@ -99,15 +99,18 @@ export async function POST(req: NextRequest) {
   }
   const existingCount = new Map<string, number>();
   if (createRows.length > 0) {
-    const hashes = [...new Set([...hashByRow.values()])];
+    // Scoping SOLO per accountId (pochi valori): NON mettiamo gli hash in un
+    // `IN (...)`, che con import molto grandi supererebbe il limite di variabili
+    // SQLite e farebbe 500. Filtriamo gli hash voluti in memoria.
     const accIds = [...new Set(createRows.map((r) => r.accountId))];
+    const wantedHashes = new Set(hashByRow.values());
     const grouped = await prisma.transaction.groupBy({
       by: ["accountId", "sourceHash"],
-      where: { accountId: { in: accIds }, sourceHash: { in: hashes } },
+      where: { accountId: { in: accIds } },
       _count: { _all: true },
     });
     for (const g of grouped) {
-      if (g.sourceHash) {
+      if (g.sourceHash && wantedHashes.has(g.sourceHash)) {
         existingCount.set(`${g.accountId}|${g.sourceHash}`, g._count._all);
       }
     }
